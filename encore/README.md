@@ -12,8 +12,10 @@ correctness, reliability, and acceptable latency.
 
 ## Status
 
-Week 1 — Foundation. See `docs/decisions/` for what's been decided so far
-and why.
+Week 2 — Vertical Slice. The full browse → hold → order → ticket path is
+implemented end to end in `apps/api-gateway` (still a monolith — service
+decomposition starts around Week 6). See `docs/decisions/` for what's been
+decided so far and why.
 
 ## Repo layout
 
@@ -38,18 +40,41 @@ See `docs/architecture/service-boundaries.md` for what each service under
 ## Local development
 
 ```bash
-# Bring up shared infrastructure (Postgres, Redis, Kafka)
+# Bring up infra + api-gateway (Postgres, Redis, Kafka, api-gateway)
 docker compose -f infrastructure/docker/docker-compose.yml up -d
+# or: make up
 
-# Or, once you're in the repo root:
-make up
+# Apply migrations, then seed demo data
+make install-api      # first time only — installs encore-common + api-gateway locally
+make migrate
+make seed             # prints a demo user id — use it as your Bearer token
 
-# Run tests for a given package
-cd packages/common && pip install -e ".[dev]" && pytest -v
+# Run the API locally (outside Docker, with reload)
+make run-api
 
-# Lint
-cd packages/common && ruff check .
+# Try the vertical slice end to end:
+curl http://localhost:8000/api/v1/events
+curl http://localhost:8000/api/v1/events/<event_id>/seats
+curl -X POST http://localhost:8000/api/v1/holds \
+  -H "Authorization: Bearer <demo_user_id>" \
+  -H "Idempotency-Key: demo-hold-1" \
+  -H "Content-Type: application/json" \
+  -d '{"event_id": "<event_id>", "seat_id": "<seat_id>"}'
+curl -X POST http://localhost:8000/api/v1/orders \
+  -H "Authorization: Bearer <demo_user_id>" \
+  -H "Idempotency-Key: demo-order-1" \
+  -H "Content-Type: application/json" \
+  -d '{"event_id": "<event_id>", "seat_id": "<seat_id>"}'
+curl http://localhost:8000/api/v1/orders/<order_id>
+
+# Run tests / lint for a given package
+make test-common && make lint-common
+make test-api && make lint-api
 ```
+
+Note on auth: `Authorization: Bearer <token>` currently expects the raw
+user UUID as the token — this is a deliberate, documented Week 2 shortcut,
+not real authentication. See `docs/decisions/0004-fake-bearer-token-week2-auth.md`.
 
 Copy `.env.example` to `.env` and adjust before running anything that needs
 real credentials (there are none required for local dev with the default

@@ -1,0 +1,101 @@
+"""GET /api/v1/events, GET /api/v1/events/{event_id}/seats.
+
+The "browse" step of docs/architecture/vertical-slice-plan.md. Public —
+no auth required, matching api-conventions.md section 3 ("required on all
+routes except /health and /events").
+"""
+
+from __future__ import annotations
+
+import uuid
+
+from encore_common import success_envelope
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..db import get_db
+from ..models import Event, Inventory, Seat, Venue
+from ..pagination import decode_cursor, encode_cursor
+from ..schemas import EventListOut, EventOut, SeatListOut, SeatOut
+
+router = APIRouter(prefix="/api/v1/events", tags=["events"])
+
+DEFAULT_PAGE_SIZE = 20
+
+
+@router.get("")
+def list_events(
+    request: Request,
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=100),
+    cursor: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    stmt = select(Event, Venue).join(Venue, Event.venue_id == Venue.id).order_by(
+        Event.created_at.asc(), Event.id.asc()
+    )
+
+    if cursor:
+        cursor_created_at, cursor_id = decode_cursor(cursor)
+        stmt = stmt.where(
+            (Event.created_at > cursor_created_at)
+            | ((Event.created_at == cursor_created_at) & (Event.id > cursor_id))
+        )
+
+    rows = db.execute(stmt.limit(limit + 1)).all()
+
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+
+    items = [
+        EventOut(
+            id=event.id,
+            name=event.name,
+            venue_name=venue.name,
+            city=venue.city,
+            starts_at=event.starts_at,
+            status=event.status,
+        )
+        for event, venue in rows
+    ]
+
+    next_cursor = None
+    if has_more and rows:
+        last_event, _ = rows[-1]
+        next_cursor = encode_cursor(last_event.created_at, last_event.id)
+
+    body = EventListOut(items=items, next_cursor=next_cursor)
+    request_id = getattr(request.state, "request_id", "")
+    return success_envelope(body.model_dump(mode="json"), request_id=request_id)
+
+
+@router.get("/{event_id}/seats")
+def list_event_seats(event_id: uuid.UUID, request: Request, db: Session = Depends(get_db)) -> dict:
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail={"code": "EVENT_NOT_FOUND"})
+
+    stmt = (
+        select(Inventory, Seat)
+        .join(Seat, Inventory.seat_id == Seat.id)
+        .where(Inventory.event_id == event_id)
+        .order_by(Seat.section.asc(), Seat.row_label.asc(), Seat.seat_number.asc())
+    )
+    rows = db.execute(stmt).all()
+
+    items = [
+        SeatOut(
+            inventory_id=inv.id,
+            seat_id=seat.id,
+            section=seat.section,
+            row_label=seat.row_label,
+            seat_number=seat.seat_number,
+            status=inv.status,
+            price_cents=inv.price_cents,
+        )
+        for inv, seat in rows
+    ]
+
+    body = SeatListOut(event_id=event_id, items=items)
+    request_id = getattr(request.state, "request_id", "")
+    return success_envelope(body.model_dump(mode="json"), request_id=request_id)

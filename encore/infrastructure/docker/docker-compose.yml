@@ -1,9 +1,10 @@
 version: "3.9"
 
-# Encore V1 — local development infrastructure baseline (Week 1).
-# App services (api-gateway, inventory-service, ...) are added to this file
-# as they're built, starting Week 2 with api-gateway. Until then this file
-# brings up only the shared infrastructure every service depends on.
+# Encore V1 — local development infrastructure + services.
+# Infra (Postgres, Redis, Kafka) landed Week 1. api-gateway landed Week 2.
+# Remaining services (apps/inventory-service, apps/checkout-service, ...)
+# are added to this file as they're built and split out of the Week 2
+# monolith — see docs/decisions/0003-thin-vertical-slice-before-depth.md.
 
 name: encore
 
@@ -64,6 +65,33 @@ services:
       interval: 10s
       timeout: 10s
       retries: 10
+
+  # First app service — added Week 2. Build context is the repo root
+  # (`../..` from this file's location), not apps/api-gateway, because the
+  # Dockerfile needs to COPY packages/common too. See
+  # apps/api-gateway/Dockerfile's top comment.
+  api-gateway:
+    build:
+      context: ../..
+      dockerfile: apps/api-gateway/Dockerfile
+    container_name: encore-api-gateway
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: encore
+      POSTGRES_PASSWORD: encore_dev_only
+      POSTGRES_DB: encore
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Optional dev-only inspection tools — not part of the runtime system,
   # convenience only. Safe to comment out.

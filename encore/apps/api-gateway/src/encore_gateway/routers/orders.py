@@ -1,0 +1,167 @@
+"""POST /api/v1/orders, GET /api/v1/orders/{order_id}.
+
+The "mock order -> mock ticket" step of
+docs/architecture/vertical-slice-plan.md.
+
+Payment is mocked: it always succeeds, synchronously, in-process. No real
+payment provider, no async checkout saga (Kafka), no idempotency check on
+a *payment* specifically — those all arrive with checkout-service and
+payment-service in later weeks (see docs/architecture/service-boundaries.md).
+What Week 2 DOES implement correctly: the order is only created if the
+seat is HELD by the requesting user, and the hold -> sale -> ticket
+sequence happens inside a single DB transaction, so a failure partway
+through can't leave a SOLD seat with no ticket, or a ticket with no order.
+"""
+
+from __future__ import annotations
+
+import json
+import uuid
+
+from encore_common import error_envelope, success_envelope
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session, selectinload
+
+from ..auth import get_current_user
+from ..db import get_db
+from ..domain.inventory_state import InventoryStatus as DomainInventoryStatus
+from ..domain.inventory_state import can_purchase, generate_ticket_code
+from ..idempotency import get_idempotent_response, save_idempotent_response
+from ..models import Inventory, InventoryStatus, Order, OrderStatus, Ticket, User
+from ..schemas import OrderCreate, OrderOut, TicketOut
+
+router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
+
+CREATE_ENDPOINT_NAME = "POST /api/v1/orders"
+
+
+@router.post("", status_code=201)
+def create_order(
+    payload: OrderCreate,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> JSONResponse:
+    request_id = getattr(request.state, "request_id", "")
+
+    if not idempotency_key:
+        raise HTTPException(
+            status_code=400,
+            detail=error_envelope(
+                "MISSING_IDEMPOTENCY_KEY", "Idempotency-Key header is required.", request_id
+            ),
+        )
+
+    existing = get_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME)
+    if existing is not None:
+        return JSONResponse(status_code=existing.status_code, content=json.loads(existing.response_json))
+
+    inventory_row = db.execute(
+        select(Inventory).where(
+            Inventory.event_id == payload.event_id, Inventory.seat_id == payload.seat_id
+        )
+    ).scalar_one_or_none()
+
+    if inventory_row is None:
+        raise HTTPException(
+            status_code=404, detail=error_envelope("SEAT_NOT_FOUND", "No such seat for this event.", request_id)
+        )
+
+    transition = can_purchase(
+        DomainInventoryStatus(inventory_row.status.value),
+        held_by_user_id=inventory_row.held_by_user_id,
+        requesting_user_id=current_user.id,
+    )
+    if not transition.allowed:
+        body = error_envelope(transition.reason, "Seat cannot be purchased in its current state.", request_id)
+        save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, 409, body)
+        db.commit()
+        return JSONResponse(status_code=409, content=body)
+
+    # --- Mock payment: always succeeds, synchronously. Real provider
+    # integration + async saga lands with checkout-service/payment-service.
+    payment_succeeded = True
+    if not payment_succeeded:  # pragma: no cover - unreachable in Week 2, kept for the real branch later
+        body = error_envelope("PAYMENT_FAILED", "Mock payment failed.", request_id)
+        return JSONResponse(status_code=402, content=body)
+
+    order = Order(
+        id=uuid.uuid4(),
+        user_id=current_user.id,
+        event_id=payload.event_id,
+        status=OrderStatus.COMPLETED,
+        total_cents=inventory_row.price_cents,
+        idempotency_key=idempotency_key,
+    )
+    db.add(order)
+
+    result = db.execute(
+        update(Inventory)
+        .where(Inventory.id == inventory_row.id, Inventory.status == InventoryStatus.HELD)
+        .values(status=InventoryStatus.SOLD)
+    )
+    if result.rowcount == 0:
+        db.rollback()
+        body = error_envelope("SEAT_ALREADY_SOLD", "Seat was sold by another request.", request_id)
+        return JSONResponse(status_code=409, content=body)
+
+    ticket = Ticket(
+        id=uuid.uuid4(),
+        order_id=order.id,
+        inventory_id=inventory_row.id,
+        ticket_code=generate_ticket_code(str(order.id), sequence=0),
+    )
+    db.add(ticket)
+
+    db.flush()  # assign server defaults (created_at) before building the response
+
+    order_out = OrderOut(
+        id=order.id,
+        event_id=order.event_id,
+        user_id=order.user_id,
+        status=order.status,
+        total_cents=order.total_cents,
+        created_at=order.created_at,
+        tickets=[
+            TicketOut(id=ticket.id, ticket_code=ticket.ticket_code, status=ticket.status, seat_id=payload.seat_id)
+        ],
+    )
+    body = success_envelope(order_out.model_dump(mode="json"), request_id=request_id)
+
+    save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, 201, body)
+    db.commit()
+
+    return JSONResponse(status_code=201, content=body)
+
+
+@router.get("/{order_id}")
+def get_order(order_id: uuid.UUID, request: Request, db: Session = Depends(get_db)) -> dict:
+    request_id = getattr(request.state, "request_id", "")
+
+    order = db.execute(
+        select(Order).options(selectinload(Order.tickets)).where(Order.id == order_id)
+    ).scalar_one_or_none()
+
+    if order is None:
+        raise HTTPException(status_code=404, detail=error_envelope("ORDER_NOT_FOUND", "No such order.", request_id))
+
+    tickets_out = []
+    for ticket in order.tickets:
+        inv = db.get(Inventory, ticket.inventory_id)
+        tickets_out.append(
+            TicketOut(id=ticket.id, ticket_code=ticket.ticket_code, status=ticket.status, seat_id=inv.seat_id)
+        )
+
+    order_out = OrderOut(
+        id=order.id,
+        event_id=order.event_id,
+        user_id=order.user_id,
+        status=order.status,
+        total_cents=order.total_cents,
+        created_at=order.created_at,
+        tickets=tickets_out,
+    )
+    return success_envelope(order_out.model_dump(mode="json"), request_id=request_id)
