@@ -21,6 +21,7 @@ jobs:
       matrix:
         package:
           - packages/common
+          - packages/cache
           - apps/api-gateway
           # Add each new Python package/service directory here as it's
           # built, e.g.:
@@ -34,13 +35,15 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install encore-common
+      - name: Install encore-common and encore-cache
         # Every service imports packages/common (see docs/architecture/
         # service-boundaries.md). Installed first, unconditionally — a
         # second no-op install for the packages/common job itself is
         # harmless. Revisit with a workspace tool (uv/poetry workspaces)
         # per ADR-0002's follow-up if this grows unwieldy.
-        run: pip install -e packages/common
+        run: |
+          pip install -e packages/common
+          pip install -e packages/cache
 
       - name: Install package + dev dependencies
         working-directory: ${{ matrix.package }}

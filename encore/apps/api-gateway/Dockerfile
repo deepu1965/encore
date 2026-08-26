@@ -6,6 +6,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY packages/common ./packages/common
+COPY packages/cache ./packages/cache
 COPY apps/api-gateway/pyproject.toml ./apps/api-gateway/pyproject.toml
 COPY apps/api-gateway/src ./apps/api-gateway/src
 COPY apps/api-gateway/migrations ./apps/api-gateway/migrations
@@ -13,6 +14,7 @@ COPY apps/api-gateway/alembic.ini ./apps/api-gateway/alembic.ini
 COPY apps/api-gateway/scripts ./apps/api-gateway/scripts
 
 RUN pip install --no-cache-dir -e ./packages/common \
+    && pip install --no-cache-dir -e ./packages/cache \
     && pip install --no-cache-dir -e ./apps/api-gateway
 
 WORKDIR /app/apps/api-gateway

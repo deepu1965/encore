@@ -1,6 +1,6 @@
 COMPOSE_FILE := infrastructure/docker/docker-compose.yml
 
-.PHONY: up down logs ps test-common lint-common
+.PHONY: up down logs ps test-common lint-common test-cache lint-cache
 
 up: ## Start local infra (Postgres, Redis, Kafka)
 	docker compose -f $(COMPOSE_FILE) up -d
@@ -20,8 +20,15 @@ test-common: ## Run packages/common's test suite
 lint-common: ## Lint packages/common
 	cd packages/common && ruff check .
 
-install-api: ## Install api-gateway + its local dependency (encore-common)
+test-cache: ## Run packages/cache's test suite
+	cd packages/cache && pip install -e ".[dev]" -q && pytest -v
+
+lint-cache: ## Lint packages/cache
+	cd packages/cache && ruff check .
+
+install-api: ## Install api-gateway + its local dependency (encore-common, encore-cache)
 	pip install -e packages/common
+	pip install -e packages/cache
 	cd apps/api-gateway && pip install -e ".[dev]"
 
 migrate: ## Apply Alembic migrations against the running Postgres container

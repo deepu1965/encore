@@ -40,6 +40,11 @@ router = APIRouter(prefix="/api/v1/holds", tags=["holds"])
 ENDPOINT_NAME = "POST /api/v1/holds"
 
 
+from encore_cache import CacheClient, event_seats_key, invalidate
+from ..cache import get_cache
+
+# ...
+
 @router.post("", status_code=201)
 def create_hold(
     payload: HoldCreate,
@@ -47,6 +52,7 @@ def create_hold(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    cache: CacheClient = Depends(get_cache),
 ) -> JSONResponse:
     request_id = getattr(request.state, "request_id", "")
 
@@ -109,5 +115,8 @@ def create_hold(
 
     save_idempotent_response(db, idempotency_key, ENDPOINT_NAME, 201, body)
     db.commit()
+
+    # Invalidate the seats cache for this event so subsequent reads see the hold
+    invalidate(cache, event_seats_key(str(payload.event_id)))
 
     return JSONResponse(status_code=201, content=body)

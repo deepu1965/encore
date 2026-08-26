@@ -8,13 +8,23 @@ from __future__ import annotations
 import uuid
 
 from encore_common import error_envelope
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from .cache import close_cache, init_cache
 from .routers import events, health, holds, orders
 
-app = FastAPI(title="Encore API Gateway", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_cache()
+    yield
+    close_cache()
+
+
+app = FastAPI(title="Encore API Gateway", version="0.1.0", lifespan=lifespan)
 
 
 @app.middleware("http")

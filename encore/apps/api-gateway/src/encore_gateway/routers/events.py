@@ -13,7 +13,10 @@ from encore_common import success_envelope
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from encore_cache import CacheClient, cache_aside, event_seats_key
+from encore_cache.helpers import TTL_SEATS_SECONDS
 
+from ..cache import get_cache
 from ..db import get_db
 from ..models import Event, Inventory, Seat, Venue
 from ..pagination import decode_cursor, encode_cursor
@@ -70,32 +73,45 @@ def list_events(
 
 
 @router.get("/{event_id}/seats")
-def list_event_seats(event_id: uuid.UUID, request: Request, db: Session = Depends(get_db)) -> dict:
-    event = db.get(Event, event_id)
-    if event is None:
+def list_event_seats(
+    event_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    cache: CacheClient = Depends(get_cache),
+) -> dict:
+    def fallback() -> dict | None:
+        event = db.get(Event, event_id)
+        if event is None:
+            return None
+
+        stmt = (
+            select(Inventory, Seat)
+            .join(Seat, Inventory.seat_id == Seat.id)
+            .where(Inventory.event_id == event_id)
+            .order_by(Seat.section.asc(), Seat.row_label.asc(), Seat.seat_number.asc())
+        )
+        rows = db.execute(stmt).all()
+
+        items = [
+            SeatOut(
+                inventory_id=inv.id,
+                seat_id=seat.id,
+                section=seat.section,
+                row_label=seat.row_label,
+                seat_number=seat.seat_number,
+                status=inv.status,
+                price_cents=inv.price_cents,
+            )
+            for inv, seat in rows
+        ]
+
+        return SeatListOut(event_id=event_id, items=items).model_dump(mode="json")
+
+    cache_key = event_seats_key(str(event_id))
+    payload = cache_aside(cache, cache_key, TTL_SEATS_SECONDS, fallback)
+
+    if payload is None:
         raise HTTPException(status_code=404, detail={"code": "EVENT_NOT_FOUND"})
 
-    stmt = (
-        select(Inventory, Seat)
-        .join(Seat, Inventory.seat_id == Seat.id)
-        .where(Inventory.event_id == event_id)
-        .order_by(Seat.section.asc(), Seat.row_label.asc(), Seat.seat_number.asc())
-    )
-    rows = db.execute(stmt).all()
-
-    items = [
-        SeatOut(
-            inventory_id=inv.id,
-            seat_id=seat.id,
-            section=seat.section,
-            row_label=seat.row_label,
-            seat_number=seat.seat_number,
-            status=inv.status,
-            price_cents=inv.price_cents,
-        )
-        for inv, seat in rows
-    ]
-
-    body = SeatListOut(event_id=event_id, items=items)
     request_id = getattr(request.state, "request_id", "")
-    return success_envelope(body.model_dump(mode="json"), request_id=request_id)
+    return success_envelope(payload, request_id=request_id)

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     postgres_password: str = "encore_dev_only"
     postgres_db: str = "encore"
 
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+
     @property
     def database_url(self) -> str:
         return (
