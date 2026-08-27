@@ -37,10 +37,15 @@ from ..idempotency import get_idempotent_response, save_idempotent_response
 from ..models import Inventory, InventoryStatus, User
 from ..schemas import HoldCreate, HoldOut
 
+# Week 5 additions
+from encore_event_contracts import SEAT_HELD_EVENT_TYPE, SEAT_HELD_TOPIC, SEAT_HELD_VERSION, SeatHeldPayload
+from encore_kafka_client import build_envelope
+from encore_id_generator import SnowflakeIDGenerator
+
 router = APIRouter(prefix="/api/v1/holds", tags=["holds"])
 
 ENDPOINT_NAME = "POST /api/v1/holds"
-
+_id_gen = SnowflakeIDGenerator()
 
 @router.post("", status_code=201)
 def create_hold(
@@ -85,9 +90,7 @@ def create_hold(
 
     now = datetime.now(timezone.utc)
 
-    # Plain UPDATE, scoped by status='AVAILABLE' as a best-effort guard —
-    # see module docstring for why this is not sufficient under real
-    # concurrency yet.
+    # Plain UPDATE, scoped by status='AVAILABLE' as a best-effort guard
     result = db.execute(
         update(Inventory)
         .where(Inventory.id == inventory_row.id, Inventory.status == InventoryStatus.AVAILABLE)
@@ -95,7 +98,6 @@ def create_hold(
     )
 
     if result.rowcount == 0:
-        # Lost the race between our read above and this UPDATE.
         db.rollback()
         body = error_envelope("SEAT_ALREADY_HELD", "Seat was held by another request.", request_id)
         return JSONResponse(status_code=409, content=body)
@@ -113,7 +115,27 @@ def create_hold(
     save_idempotent_response(db, idempotency_key, ENDPOINT_NAME, 201, body)
     db.commit()
 
-    # Invalidate the seats cache for this event so subsequent reads see the hold.
+    # Invalidate the seats cache
     invalidate(cache, event_seats_key(str(payload.event_id)))
+
+    # --- Emit Kafka event (Week 5) ---
+    producer = getattr(request.app.state, "kafka_producer", None)
+    if producer is not None:
+        envelope = build_envelope(
+            event_type=SEAT_HELD_EVENT_TYPE,
+            event_version=SEAT_HELD_VERSION,
+            key=str(payload.event_id),  # Partition by event_id
+            payload=SeatHeldPayload(
+                event_id=str(payload.event_id),
+                seat_id=str(payload.seat_id),
+                inventory_id=str(inventory_row.id),
+                held_by_user_id=str(current_user.id),
+                held_at=now.isoformat(),
+            ).to_dict(),
+            producer_name=request.app.state.kafka_producer.producer_name,
+            trace_id=request_id,
+            id_generator=_id_gen,
+        )
+        producer.publish(SEAT_HELD_TOPIC, envelope)
 
     return JSONResponse(status_code=201, content=body)

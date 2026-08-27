@@ -14,6 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .cache import close_cache, init_cache
+from .kafka_producer import close_producer, init_producer
 from .middleware.rate_limit import RateLimitMiddleware
 from .rate_limit import init_rate_limiters
 from .routers import events, health, holds, orders
@@ -27,11 +28,16 @@ async def lifespan(app: FastAPI):
       1. init_cache()         — connect to Redis (or fallback to Null)
       2. app.state.cache      — store the client so middleware can reach it
       3. init_rate_limiters() — create the two RateLimiter singletons
+      4. init_producer()      — connect to Kafka
     """
     cache = init_cache()
     app.state.cache = cache
     init_rate_limiters(cache, app)
+    init_producer(app)
+    
     yield
+    
+    close_producer(app)
     close_cache()
     app.state.cache = None
 

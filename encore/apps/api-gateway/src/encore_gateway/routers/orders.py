@@ -40,13 +40,15 @@ from ..idempotency import get_idempotent_response, save_idempotent_response
 from ..models import Inventory, InventoryStatus, Order, OrderStatus, Ticket, User
 from ..schemas import OrderCreate, OrderOut, TicketOut
 
+# Week 5 additions
+from encore_event_contracts import ORDER_COMPLETED_EVENT_TYPE, ORDER_COMPLETED_TOPIC, ORDER_COMPLETED_VERSION, OrderCompletedPayload
+from encore_kafka_client import build_envelope
+
 router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
 
 CREATE_ENDPOINT_NAME = "POST /api/v1/orders"
 
-# Process-scoped Snowflake generator. worker_id reads from SNOWFLAKE_WORKER_ID
-# env var (default 0 for local dev). The same instance is reused across
-# requests; it's thread-safe internally via a threading.Lock.
+# Process-scoped Snowflake generator.
 _id_gen = SnowflakeIDGenerator()
 
 
@@ -179,8 +181,31 @@ def create_order(
     save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, 201, body)
     db.commit()
 
-    # Invalidate the seats cache for this event so subsequent reads see the sale.
+    # Invalidate the seats cache
     invalidate(cache, event_seats_key(str(payload.event_id)))
+
+    # --- Emit Kafka event (Week 5) ---
+    producer = getattr(request.app.state, "kafka_producer", None)
+    if producer is not None:
+        envelope = build_envelope(
+            event_type=ORDER_COMPLETED_EVENT_TYPE,
+            event_version=ORDER_COMPLETED_VERSION,
+            key=str(order.id),  # Partition by order_id
+            payload=OrderCompletedPayload(
+                order_id=str(order.id),
+                user_id=str(order.user_id),
+                event_id=str(order.event_id),
+                seat_id=str(payload.seat_id),
+                total_cents=order.total_cents,
+                ticket_id=str(ticket.id),
+                ticket_code=ticket.ticket_code,
+                completed_at=order.created_at.isoformat(),
+            ).to_dict(),
+            producer_name=request.app.state.kafka_producer.producer_name,
+            trace_id=request_id,
+            id_generator=_id_gen,
+        )
+        producer.publish(ORDER_COMPLETED_TOPIC, envelope)
 
     return JSONResponse(status_code=201, content=body)
 

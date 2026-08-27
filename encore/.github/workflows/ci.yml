@@ -24,6 +24,8 @@ jobs:
           - packages/cache
           - packages/rate-limiter
           - packages/id-generator
+          - packages/event-contracts
+          - packages/kafka-client
           - apps/api-gateway
           # Add each new Python package/service directory here as it's
           # built, e.g.:
@@ -45,6 +47,8 @@ jobs:
           pip install -e packages/cache
           pip install -e packages/rate-limiter
           pip install -e packages/id-generator
+          pip install -e packages/event-contracts
+          pip install -e packages/kafka-client
 
       - name: Install package + dev dependencies
         working-directory: ${{ matrix.package }}

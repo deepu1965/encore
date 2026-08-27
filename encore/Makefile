@@ -5,7 +5,10 @@ COMPOSE_FILE := infrastructure/docker/docker-compose.yml
         test-cache lint-cache \
         test-rate-limiter lint-rate-limiter \
         test-id-generator lint-id-generator \
-        install-api migrate seed run-api test-api lint-api
+        test-event-contracts lint-event-contracts \
+        test-kafka-client lint-kafka-client \
+        install-api migrate seed run-api test-api lint-api \
+        create-topics
 
 up: ## Start local infra (Postgres, Redis, Kafka)
 	docker compose -f $(COMPOSE_FILE) up -d
@@ -48,6 +51,8 @@ install-api: ## Install api-gateway + all local dependencies
 	pip install -e packages/cache
 	pip install -e packages/rate-limiter
 	pip install -e packages/id-generator
+	pip install -e packages/event-contracts
+	pip install -e packages/kafka-client
 	cd apps/api-gateway && pip install -e ".[dev]"
 
 migrate: ## Apply Alembic migrations against the running Postgres container
@@ -64,3 +69,18 @@ test-api: ## Run api-gateway's test suite
 
 lint-api: ## Lint api-gateway
 	cd apps/api-gateway && ruff check .
+
+test-event-contracts: ## Run packages/event-contracts's test suite
+	cd packages/event-contracts && pip install -e ".[dev]" -q && pytest -v
+
+lint-event-contracts: ## Lint packages/event-contracts
+	cd packages/event-contracts && ruff check .
+
+test-kafka-client: ## Run packages/kafka-client's test suite
+	cd packages/kafka-client && pip install -e ".[dev]" -q && pytest -v
+
+lint-kafka-client: ## Lint packages/kafka-client
+	cd packages/kafka-client && ruff check .
+
+create-topics: ## Create required Kafka topics
+	cd apps/api-gateway && python -m scripts.create_topics

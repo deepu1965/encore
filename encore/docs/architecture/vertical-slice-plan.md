@@ -30,7 +30,7 @@ GET  /api/v1/orders/{order_id}          → confirm the full record is readable 
 | Redis hot-seat cache | none — read straight from Postgres | Week 3 |
 | Distributed rate limiter | none | Week 4 |
 | Snowflake ID generator | Postgres `SERIAL`/UUID placeholder | Week 4 |
-| Kafka event backbone | none — synchronous calls only | Week 5 |
+| Kafka event backbone | none — synchronous calls only | Week 5 (Done) |
 | Virtual waiting room | none — direct access | Week 6 |
 | `SELECT ... FOR UPDATE` / atomic hold | plain `UPDATE`, **known race condition, accepted for now** | Week 7–8 |
 | Real payment provider (even mocked properly) | hardcoded "always succeeds," no idempotency key check | Week 9–10 |

@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # in a multi-process deployment. 0 is the default for local dev.
     snowflake_worker_id: int = 0
 
+    # ------------------------------------------------------------------ Kafka (Week 5)
+    kafka_bootstrap_servers: str = "localhost:9092"
+    kafka_producer_name: str = "api-gateway"
+
     @property
     def database_url(self) -> str:
         return (
