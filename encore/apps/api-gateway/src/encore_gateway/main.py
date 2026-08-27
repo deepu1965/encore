@@ -6,25 +6,45 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 
 from encore_common import error_envelope
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .cache import close_cache, init_cache
+from .middleware.rate_limit import RateLimitMiddleware
+from .rate_limit import init_rate_limiters
 from .routers import events, health, holds, orders
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_cache()
+    """Startup / shutdown lifecycle.
+
+    Startup order:
+      1. init_cache()         — connect to Redis (or fallback to Null)
+      2. app.state.cache      — store the client so middleware can reach it
+      3. init_rate_limiters() — create the two RateLimiter singletons
+    """
+    cache = init_cache()
+    app.state.cache = cache
+    init_rate_limiters(cache, app)
     yield
     close_cache()
+    app.state.cache = None
 
 
 app = FastAPI(title="Encore API Gateway", version="0.1.0", lifespan=lifespan)
+
+# ---------------------------------------------------------------------------
+# Middleware
+# Starlette processes middleware LIFO during request (FIFO during response).
+# We want:  request → X-Request-Id → RateLimit → route handler
+# So add X-Request-Id *after* RateLimit (it will execute first).
+# ---------------------------------------------------------------------------
+app.add_middleware(RateLimitMiddleware)
 
 
 @app.middleware("http")
@@ -54,11 +74,12 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     detail = exc.detail
 
     if isinstance(detail, dict) and "error" in detail:
-        # Already a full envelope (routers build these via error_envelope()).
-        # Backfill request_id in case it was built before the middleware
-        # attached request.state.request_id (defensive, shouldn't happen).
         detail.setdefault("request_id", request_id)
-        return JSONResponse(status_code=exc.status_code, content=detail)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=detail,
+            headers=dict(exc.headers or {}),
+        )
 
     if isinstance(detail, dict) and "code" in detail:
         body = error_envelope(detail["code"], detail.get("message", ""), request_id)

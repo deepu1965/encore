@@ -1,6 +1,11 @@
 COMPOSE_FILE := infrastructure/docker/docker-compose.yml
 
-.PHONY: up down logs ps test-common lint-common test-cache lint-cache
+.PHONY: up down logs ps \
+        test-common lint-common \
+        test-cache lint-cache \
+        test-rate-limiter lint-rate-limiter \
+        test-id-generator lint-id-generator \
+        install-api migrate seed run-api test-api lint-api
 
 up: ## Start local infra (Postgres, Redis, Kafka)
 	docker compose -f $(COMPOSE_FILE) up -d
@@ -26,9 +31,23 @@ test-cache: ## Run packages/cache's test suite
 lint-cache: ## Lint packages/cache
 	cd packages/cache && ruff check .
 
-install-api: ## Install api-gateway + its local dependency (encore-common, encore-cache)
+test-rate-limiter: ## Run packages/rate-limiter's test suite
+	cd packages/rate-limiter && pip install -e ".[dev]" -q && pytest -v
+
+lint-rate-limiter: ## Lint packages/rate-limiter
+	cd packages/rate-limiter && ruff check .
+
+test-id-generator: ## Run packages/id-generator's test suite
+	cd packages/id-generator && pip install -e ".[dev]" -q && pytest -v
+
+lint-id-generator: ## Lint packages/id-generator
+	cd packages/id-generator && ruff check .
+
+install-api: ## Install api-gateway + all local dependencies
 	pip install -e packages/common
 	pip install -e packages/cache
+	pip install -e packages/rate-limiter
+	pip install -e packages/id-generator
 	cd apps/api-gateway && pip install -e ".[dev]"
 
 migrate: ## Apply Alembic migrations against the running Postgres container

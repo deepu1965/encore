@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+from encore_cache import CacheClient, event_seats_key, invalidate
 from encore_common import error_envelope, success_envelope
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -28,6 +29,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
+from ..cache import get_cache
 from ..db import get_db
 from ..domain.inventory_state import InventoryStatus as DomainInventoryStatus
 from ..domain.inventory_state import can_hold
@@ -39,11 +41,6 @@ router = APIRouter(prefix="/api/v1/holds", tags=["holds"])
 
 ENDPOINT_NAME = "POST /api/v1/holds"
 
-
-from encore_cache import CacheClient, event_seats_key, invalidate
-from ..cache import get_cache
-
-# ...
 
 @router.post("", status_code=201)
 def create_hold(
@@ -116,7 +113,7 @@ def create_hold(
     save_idempotent_response(db, idempotency_key, ENDPOINT_NAME, 201, body)
     db.commit()
 
-    # Invalidate the seats cache for this event so subsequent reads see the hold
+    # Invalidate the seats cache for this event so subsequent reads see the hold.
     invalidate(cache, event_seats_key(str(payload.event_id)))
 
     return JSONResponse(status_code=201, content=body)

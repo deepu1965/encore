@@ -16,18 +16,24 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
-# Global cache instance
+# Module-level singleton — set by init_cache(), read by get_cache().
 _cache: CacheClient | None = None
 
 
-def init_cache() -> None:
-    """Initialize the global cache client. Call this on app startup."""
+def init_cache() -> CacheClient:
+    """Initialize the global cache client. Call this on app startup.
+
+    Returns the initialized client so callers (e.g. lifespan) can store it
+    on app.state for middleware / other components that need direct access.
+    """
     global _cache
-    logger.info("Initializing Redis cache client against %s:%s", settings.redis_host, settings.redis_port)
-    
+    logger.info(
+        "Initializing Redis cache client against %s:%s",
+        settings.redis_host,
+        settings.redis_port,
+    )
+
     try:
-        # Use a short timeout for the initial ping so we don't hang startup
-        # if Redis is down.
         client = RedisCacheClient(
             host=settings.redis_host,
             port=settings.redis_port,
@@ -41,8 +47,12 @@ def init_cache() -> None:
             logger.warning("Redis ping failed, falling back to NullCacheClient.")
             _cache = NullCacheClient()
     except Exception as exc:
-        logger.warning("Failed to connect to Redis (%s), falling back to NullCacheClient.", exc)
+        logger.warning(
+            "Failed to connect to Redis (%s), falling back to NullCacheClient.", exc
+        )
         _cache = NullCacheClient()
+
+    return _cache
 
 
 def close_cache() -> None:
@@ -56,7 +66,7 @@ def close_cache() -> None:
 def get_cache() -> Generator[CacheClient, None, None]:
     """FastAPI dependency: yields the global cache client."""
     if _cache is None:
-        # Fallback if init_cache wasn't called (e.g. in some test contexts)
+        # Fallback if init_cache wasn't called (e.g. some test contexts).
         yield NullCacheClient()
     else:
         yield _cache

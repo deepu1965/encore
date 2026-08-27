@@ -22,10 +22,12 @@ jobs:
         package:
           - packages/common
           - packages/cache
+          - packages/rate-limiter
+          - packages/id-generator
           - apps/api-gateway
           # Add each new Python package/service directory here as it's
           # built, e.g.:
-          # - packages/id-generator
+          # - packages/observability
     steps:
       - uses: actions/checkout@v4
 
@@ -35,15 +37,14 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install encore-common and encore-cache
-        # Every service imports packages/common (see docs/architecture/
-        # service-boundaries.md). Installed first, unconditionally — a
-        # second no-op install for the packages/common job itself is
-        # harmless. Revisit with a workspace tool (uv/poetry workspaces)
-        # per ADR-0002's follow-up if this grows unwieldy.
+      - name: Install shared packages
+        # All packages installed unconditionally so each matrix job has its
+        # dependencies available regardless of which package it's testing.
         run: |
           pip install -e packages/common
           pip install -e packages/cache
+          pip install -e packages/rate-limiter
+          pip install -e packages/id-generator
 
       - name: Install package + dev dependencies
         working-directory: ${{ matrix.package }}

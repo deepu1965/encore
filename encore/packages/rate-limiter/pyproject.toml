@@ -1,0 +1,21 @@
+[project]
+name = "encore-rate-limiter"
+version = "0.1.0"
+description = "Redis-backed distributed token-bucket rate limiter for Encore services."
+requires-python = ">=3.11"
+dependencies = [
+    "encore-cache",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6", "fakeredis>=2.23"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

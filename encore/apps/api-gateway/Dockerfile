@@ -1,5 +1,6 @@
 # Build context is the repo root (see infrastructure/docker/docker-compose.yml),
-# not this directory, because this service depends on ../../packages/common
+# not this directory, because this service depends on ../../packages/common,
+# ../../packages/cache, ../../packages/rate-limiter, ../../packages/id-generator
 # and Docker can't COPY from outside its build context otherwise.
 FROM python:3.12-slim
 
@@ -7,6 +8,8 @@ WORKDIR /app
 
 COPY packages/common ./packages/common
 COPY packages/cache ./packages/cache
+COPY packages/rate-limiter ./packages/rate-limiter
+COPY packages/id-generator ./packages/id-generator
 COPY apps/api-gateway/pyproject.toml ./apps/api-gateway/pyproject.toml
 COPY apps/api-gateway/src ./apps/api-gateway/src
 COPY apps/api-gateway/migrations ./apps/api-gateway/migrations
@@ -15,6 +18,8 @@ COPY apps/api-gateway/scripts ./apps/api-gateway/scripts
 
 RUN pip install --no-cache-dir -e ./packages/common \
     && pip install --no-cache-dir -e ./packages/cache \
+    && pip install --no-cache-dir -e ./packages/rate-limiter \
+    && pip install --no-cache-dir -e ./packages/id-generator \
     && pip install --no-cache-dir -e ./apps/api-gateway
 
 WORKDIR /app/apps/api-gateway
