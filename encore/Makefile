@@ -8,7 +8,8 @@ COMPOSE_FILE := infrastructure/docker/docker-compose.yml
         test-event-contracts lint-event-contracts \
         test-kafka-client lint-kafka-client \
         install-api migrate seed run-api test-api lint-api \
-        create-topics
+        create-topics \
+        test-waiting-room lint-waiting-room run-waiting-room
 
 up: ## Start local infra (Postgres, Redis, Kafka)
 	docker compose -f $(COMPOSE_FILE) up -d
@@ -84,3 +85,12 @@ lint-kafka-client: ## Lint packages/kafka-client
 
 create-topics: ## Create required Kafka topics
 	cd apps/api-gateway && python -m scripts.create_topics
+
+test-waiting-room: ## Run apps/waiting-room's test suite
+	cd apps/waiting-room && pip install -e ".[dev]" -q && pytest -v
+
+lint-waiting-room: ## Lint apps/waiting-room
+	cd apps/waiting-room && ruff check .
+
+run-waiting-room: ## Run waiting-room locally with reload
+	cd apps/waiting-room && uvicorn encore_waiting_room.main:app --reload --port 8001

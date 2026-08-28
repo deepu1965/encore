@@ -96,6 +96,37 @@ services:
       timeout: 5s
       retries: 5
 
+  # Virtual waiting room service — added Week 6.
+  # Build context is the repo root (same pattern as api-gateway).
+  waiting-room:
+    build:
+      context: ../..
+      dockerfile: apps/waiting-room/Dockerfile
+    container_name: encore-waiting-room
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SNOWFLAKE_WORKER_ID: "1"
+      # Set FLASH_SALE_EVENT_IDS to enable waiting room for specific events:
+      # FLASH_SALE_EVENT_IDS: "uuid1,uuid2"
+      FLASH_SALE_EVENT_IDS: ""
+      ADMISSION_BATCH_SIZE: "100"
+      ADMISSION_INTERVAL_SECS: "5"
+    ports:
+      - "8001:8001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Optional dev-only inspection tools — not part of the runtime system,
   # convenience only. Safe to comment out.
   redis-commander:

@@ -44,6 +44,19 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_producer_name: str = "api-gateway"
 
+    # ------------------------------------------------------------------ Waiting Room (Week 6)
+    # Comma-separated UUIDs of events that require waiting-room admission.
+    # Users must present an X-Waiting-Room-Token on POST /holds for these events.
+    # Week 6 shortcut: long-term design is is_flash_sale column on events table (ADR-0009).
+    flash_sale_event_ids: str = ""
+
+    @property
+    def flash_sale_set(self) -> set[str]:
+        """Return the set of flash-sale event IDs (UUIDs as strings)."""
+        if not self.flash_sale_event_ids:
+            return set()
+        return {e.strip() for e in self.flash_sale_event_ids.split(",") if e.strip()}
+
     @property
     def database_url(self) -> str:
         return (

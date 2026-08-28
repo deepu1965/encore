@@ -27,6 +27,7 @@ jobs:
           - packages/event-contracts
           - packages/kafka-client
           - apps/api-gateway
+          - apps/waiting-room
           # Add each new Python package/service directory here as it's
           # built, e.g.:
           # - packages/observability

@@ -13,10 +13,16 @@ logger = logging.getLogger(__name__)
 
 TOPICS = [
     # (topic_name, num_partitions, replication_factor)
+    # Week 5
     ("inventory.seat.held", 3, 1),
     ("inventory.seat.held.dlq", 1, 1),
     ("order.completed", 3, 1),
     ("order.completed.dlq", 1, 1),
+    # Week 6
+    ("waitingroom.user.joined", 3, 1),
+    ("waitingroom.user.joined.dlq", 1, 1),
+    ("waitingroom.user.admitted", 3, 1),
+    ("waitingroom.user.admitted.dlq", 1, 1),
 ]
 
 def main() -> None:

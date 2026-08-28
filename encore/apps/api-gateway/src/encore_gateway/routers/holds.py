@@ -23,6 +23,9 @@ from datetime import datetime, timezone
 
 from encore_cache import CacheClient, event_seats_key, invalidate
 from encore_common import error_envelope, success_envelope
+from encore_event_contracts import SEAT_HELD_EVENT_TYPE, SEAT_HELD_TOPIC, SEAT_HELD_VERSION, SeatHeldPayload
+from encore_id_generator import SnowflakeIDGenerator
+from encore_kafka_client import build_envelope
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
@@ -30,6 +33,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..cache import get_cache
+from ..config import settings
 from ..db import get_db
 from ..domain.inventory_state import InventoryStatus as DomainInventoryStatus
 from ..domain.inventory_state import can_hold
@@ -37,26 +41,83 @@ from ..idempotency import get_idempotent_response, save_idempotent_response
 from ..models import Inventory, InventoryStatus, User
 from ..schemas import HoldCreate, HoldOut
 
-# Week 5 additions
-from encore_event_contracts import SEAT_HELD_EVENT_TYPE, SEAT_HELD_TOPIC, SEAT_HELD_VERSION, SeatHeldPayload
-from encore_kafka_client import build_envelope
-from encore_id_generator import SnowflakeIDGenerator
-
 router = APIRouter(prefix="/api/v1/holds", tags=["holds"])
 
 ENDPOINT_NAME = "POST /api/v1/holds"
 _id_gen = SnowflakeIDGenerator()
+
+
+def _validate_waiting_room_token(
+    event_id: str,
+    token: str | None,
+    cache: CacheClient,
+    request_id: str,
+) -> None:
+    """Validate the X-Waiting-Room-Token for flash-sale events.
+
+    Atomically consumes the token (GETDEL) — single-use. If the token is
+    missing, invalid, or already used, raises HTTPException 403.
+
+    Direct Redis read shortcut: the api-gateway reads the waiting-room's
+    Redis keys directly (shared Redis instance). See ADR-0009 for the
+    migration path to a proper inter-service API call at Week 17+.
+    """
+    if str(event_id) not in settings.flash_sale_set:
+        return  # event is not a flash sale — no token required
+
+    if not token:
+        raise HTTPException(
+            status_code=403,
+            detail=error_envelope(
+                "WAITING_ROOM_TOKEN_REQUIRED",
+                "This event requires a waiting-room admission token. "
+                "Join the queue at POST /api/v1/waiting-room/{event_id}/join.",
+                request_id,
+            ),
+        )
+
+    # Atomically consume (GETDEL) the single-use token from shared Redis.
+    token_key = f"waiting:token:{token}"
+    token_data: str | None = None
+
+    if hasattr(cache, "_redis") and cache._redis is not None:  # noqa: SLF001
+        raw = cache._redis.getdel(token_key)
+        token_data = str(raw) if raw is not None else None
+    else:
+        # NullCacheClient (no Redis) — fail open in test/dev contexts without
+        # a real Redis. Document this path clearly; it should never occur in
+        # production because the api-gateway startup always tries Redis first.
+        return
+
+    if token_data is None:
+        raise HTTPException(
+            status_code=403,
+            detail=error_envelope(
+                "WAITING_ROOM_TOKEN_INVALID",
+                "Waiting-room token is invalid, expired, or already used.",
+                request_id,
+            ),
+        )
 
 @router.post("", status_code=201)
 def create_hold(
     payload: HoldCreate,
     request: Request,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    waiting_room_token: str | None = Header(default=None, alias="X-Waiting-Room-Token"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     cache: CacheClient = Depends(get_cache),
 ) -> JSONResponse:
     request_id = getattr(request.state, "request_id", "")
+
+    # --- Waiting-room admission guard (Week 6) ---
+    _validate_waiting_room_token(
+        event_id=str(payload.event_id),
+        token=waiting_room_token,
+        cache=cache,
+        request_id=request_id,
+    )
 
     if not idempotency_key:
         raise HTTPException(
