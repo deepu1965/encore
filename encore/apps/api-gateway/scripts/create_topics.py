@@ -23,6 +23,11 @@ TOPICS = [
     ("waitingroom.user.joined.dlq", 1, 1),
     ("waitingroom.user.admitted", 3, 1),
     ("waitingroom.user.admitted.dlq", 1, 1),
+    # Week 7
+    ("inventory.seat.released", 3, 1),
+    ("inventory.seat.released.dlq", 1, 1),
+    ("inventory.seat.hold_expired", 3, 1),
+    ("inventory.seat.hold_expired.dlq", 1, 1),
 ]
 
 def main() -> None:

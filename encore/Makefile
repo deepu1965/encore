@@ -7,6 +7,7 @@ COMPOSE_FILE := infrastructure/docker/docker-compose.yml
         test-id-generator lint-id-generator \
         test-event-contracts lint-event-contracts \
         test-kafka-client lint-kafka-client \
+        test-hold-expiry lint-hold-expiry \
         install-api migrate seed run-api test-api lint-api \
         create-topics \
         test-waiting-room lint-waiting-room run-waiting-room
@@ -82,6 +83,12 @@ test-kafka-client: ## Run packages/kafka-client's test suite
 
 lint-kafka-client: ## Lint packages/kafka-client
 	cd packages/kafka-client && ruff check .
+
+test-hold-expiry: ## Run packages/hold-expiry's test suite
+	cd packages/hold-expiry && pip install -e ".[dev]" -q && pytest -v
+
+lint-hold-expiry: ## Lint packages/hold-expiry
+	cd packages/hold-expiry && ruff check .
 
 create-topics: ## Create required Kafka topics
 	cd apps/api-gateway && python -m scripts.create_topics

@@ -11,6 +11,10 @@ dependencies = [
     "alembic>=1.13",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
+    "encore-id-generator",
+    "encore-event-contracts",
+    "encore-kafka-client",
+    "encore-hold-expiry",
     # encore-common is installed separately from ../../packages/common —
     # see README.md "Local development" for install order. Not declared
     # as a normal dependency here because it's a local path package and

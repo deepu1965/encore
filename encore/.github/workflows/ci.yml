@@ -26,6 +26,7 @@ jobs:
           - packages/id-generator
           - packages/event-contracts
           - packages/kafka-client
+          - packages/hold-expiry
           - apps/api-gateway
           - apps/waiting-room
           # Add each new Python package/service directory here as it's

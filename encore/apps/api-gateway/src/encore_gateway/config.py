@@ -57,6 +57,12 @@ class Settings(BaseSettings):
             return set()
         return {e.strip() for e in self.flash_sale_event_ids.split(",") if e.strip()}
 
+    # ------------------------------------------------------------------ Inventory Core (Week 7)
+    hold_ttl_minutes: float = 5.0
+    expiry_poll_interval_secs: int = 60
+    # PG advisory lock ID to ensure only one gateway instance runs the expiry tick
+    expiry_advisory_lock_id: int = 1001
+
     @property
     def database_url(self) -> str:
         return (

@@ -12,6 +12,7 @@ COPY packages/rate-limiter ./packages/rate-limiter
 COPY packages/id-generator ./packages/id-generator
 COPY packages/event-contracts ./packages/event-contracts
 COPY packages/kafka-client ./packages/kafka-client
+COPY packages/hold-expiry ./packages/hold-expiry
 COPY apps/api-gateway/pyproject.toml ./apps/api-gateway/pyproject.toml
 COPY apps/api-gateway/src ./apps/api-gateway/src
 COPY apps/api-gateway/migrations ./apps/api-gateway/migrations
@@ -24,6 +25,7 @@ RUN pip install --no-cache-dir -e ./packages/common \
     && pip install --no-cache-dir -e ./packages/id-generator \
     && pip install --no-cache-dir -e ./packages/event-contracts \
     && pip install --no-cache-dir -e ./packages/kafka-client \
+    && pip install --no-cache-dir -e ./packages/hold-expiry \
     && pip install --no-cache-dir -e ./apps/api-gateway
 
 WORKDIR /app/apps/api-gateway

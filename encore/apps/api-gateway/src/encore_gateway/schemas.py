@@ -60,6 +60,7 @@ class HoldOut(BaseModel):
     status: InventoryStatus
     held_by_user_id: uuid.UUID
     held_at: datetime
+    hold_expires_at: datetime | None = None
 
 
 class OrderCreate(BaseModel):
