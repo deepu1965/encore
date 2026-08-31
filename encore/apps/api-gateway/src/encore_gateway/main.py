@@ -17,7 +17,7 @@ from .cache import close_cache, init_cache
 from .kafka_producer import close_producer, init_producer
 from .middleware.rate_limit import RateLimitMiddleware
 from .rate_limit import init_rate_limiters
-from .routers import events, health, holds, orders
+from .routers import events, health, holds, inventory, orders, payments
 
 
 @asynccontextmanager
@@ -25,18 +25,41 @@ async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle.
 
     Startup order:
-      1. init_cache()         — connect to Redis (or fallback to Null)
-      2. app.state.cache      — store the client so middleware can reach it
-      3. init_rate_limiters() — create the two RateLimiter singletons
-      4. init_producer()      — connect to Kafka
+      1. init_cache()          — connect to Redis (or fallback to Null)
+      2. app.state.cache       — store the client so middleware / workers can reach it
+      3. init_rate_limiters()  — create the two RateLimiter singletons
+      4. init_producer()       — connect to Kafka
+      5. HoldExpiryWorker      — daemon thread for hold TTL cleanup (Week 7)
+                                  passes redis_client for Redis key cleanup (Week 8)
     """
+    from encore_hold_expiry import HoldExpiryWorker
+
+    from .config import settings
+    from .db import engine
+
     cache = init_cache()
     app.state.cache = cache
     init_rate_limiters(cache, app)
     init_producer(app)
-    
+
+    producer = getattr(app.state, "kafka_producer", None)
+
+    # Extract raw Redis client for the expiry worker (Week 8 key cleanup)
+    _redis_for_worker = getattr(cache, "_redis", None)
+
+    expiry_worker = HoldExpiryWorker(
+        engine=engine,
+        producer=producer,
+        poll_interval_secs=settings.expiry_poll_interval_secs,
+        advisory_lock_id=settings.expiry_advisory_lock_id,
+        redis_client=_redis_for_worker,
+    )
+    expiry_worker.start()
+    app.state.expiry_worker = expiry_worker
+
     yield
-    
+
+    expiry_worker.stop()
     close_producer(app)
     close_cache()
     app.state.cache = None
@@ -105,4 +128,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 app.include_router(health.router)
 app.include_router(events.router)
 app.include_router(holds.router)
+app.include_router(inventory.router)
 app.include_router(orders.router)
+app.include_router(payments.router)

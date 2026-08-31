@@ -10,7 +10,8 @@ COMPOSE_FILE := infrastructure/docker/docker-compose.yml
         test-hold-expiry lint-hold-expiry \
         install-api migrate seed run-api test-api lint-api \
         create-topics \
-        test-waiting-room lint-waiting-room run-waiting-room
+        test-waiting-room lint-waiting-room run-waiting-room \
+        load-test-contention load-test-flash-sale
 
 up: ## Start local infra (Postgres, Redis, Kafka)
 	docker compose -f $(COMPOSE_FILE) up -d
@@ -55,6 +56,7 @@ install-api: ## Install api-gateway + all local dependencies
 	pip install -e packages/id-generator
 	pip install -e packages/event-contracts
 	pip install -e packages/kafka-client
+	pip install -e packages/hold-expiry
 	cd apps/api-gateway && pip install -e ".[dev]"
 
 migrate: ## Apply Alembic migrations against the running Postgres container
@@ -101,3 +103,29 @@ lint-waiting-room: ## Lint apps/waiting-room
 
 run-waiting-room: ## Run waiting-room locally with reload
 	cd apps/waiting-room && uvicorn encore_waiting_room.main:app --reload --port 8001
+
+# --- Load Testing (Week 8) ---
+
+load-test-contention: ## Scenario A — concurrent hold contention (50 users, 30s). Requires .env.locust
+	cd tests/load && docker compose \
+	  -f ../../infrastructure/docker/docker-compose.yml \
+	  -f docker-compose.locust.yml \
+	  --env-file .env.locust \
+	  run --rm locust-master \
+	  -f /mnt/locust/locustfile.py --headless -u 50 -r 50 --run-time 30s --tags contention
+
+load-test-flash-sale: ## Scenario B — flash-sale throughput (100 users, 60s). Requires .env.locust
+	cd tests/load && docker compose \
+	  -f ../../infrastructure/docker/docker-compose.yml \
+	  -f docker-compose.locust.yml \
+	  --env-file .env.locust \
+	  run --rm locust-master \
+	  -f /mnt/locust/locustfile.py --headless -u 100 -r 20 --run-time 60s --tags flash-sale
+
+load-test-checkout: ## Scenario C — full checkout saga (50 users, 60s). Requires .env.locust
+	cd tests/load && docker compose \
+	  -f ../../infrastructure/docker/docker-compose.yml \
+	  -f docker-compose.locust.yml \
+	  --env-file .env.locust \
+	  run --rm locust-master \
+	  -f /mnt/locust/locustfile.py --headless -u 50 -r 10 --run-time 60s --tags checkout

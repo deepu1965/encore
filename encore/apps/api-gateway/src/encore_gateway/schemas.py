@@ -68,6 +68,10 @@ class OrderCreate(BaseModel):
     seat_id: uuid.UUID = Field(description="Seat must currently be HELD by the requesting user.")
 
 
+class PaymentCreate(BaseModel):
+    order_id: uuid.UUID = Field(description="Order ID to pay for. Must be in PENDING status.")
+
+
 class TicketOut(BaseModel):
     id: uuid.UUID
     ticket_code: str

@@ -1,0 +1,60 @@
+# Locust load test for Encore API Gateway — Week 8 Hot Inventory
+# Runs alongside the main docker-compose.yml stack.
+#
+# Usage:
+#   docker compose -f infrastructure/docker/docker-compose.yml \
+#                  -f tests/load/docker-compose.locust.yml \
+#                  up --abort-on-container-exit
+
+services:
+  locust-master:
+    image: locustio/locust:2.32.3
+    container_name: encore-locust-master
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./locustfile.py:/mnt/locust/locustfile.py:ro
+    command: >
+      -f /mnt/locust/locustfile.py
+      --master
+      --headless
+      -u ${LOCUST_USERS:-50}
+      -r ${LOCUST_SPAWN_RATE:-50}
+      --run-time ${LOCUST_RUN_TIME:-30s}
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-http://api-gateway:8000}
+      TEST_USER_TOKEN: ${TEST_USER_TOKEN:-}
+      CONTENTION_EVENT_ID: ${CONTENTION_EVENT_ID:-}
+      CONTENTION_SEAT_ID: ${CONTENTION_SEAT_ID:-}
+      FLASH_SALE_EVENT_ID: ${FLASH_SALE_EVENT_ID:-}
+      FLASH_SALE_SEAT_IDS: ${FLASH_SALE_SEAT_IDS:-}
+      IDEMPOTENCY_PREFIX: ${IDEMPOTENCY_PREFIX:-locust-test}
+    depends_on:
+      - locust-worker
+    networks:
+      - encore-net
+
+  locust-worker:
+    image: locustio/locust:2.32.3
+    container_name: encore-locust-worker
+    volumes:
+      - ./locustfile.py:/mnt/locust/locustfile.py:ro
+    command: >
+      -f /mnt/locust/locustfile.py
+      --worker
+      --master-host locust-master
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-http://api-gateway:8000}
+      TEST_USER_TOKEN: ${TEST_USER_TOKEN:-}
+      CONTENTION_EVENT_ID: ${CONTENTION_EVENT_ID:-}
+      CONTENTION_SEAT_ID: ${CONTENTION_SEAT_ID:-}
+      FLASH_SALE_EVENT_ID: ${FLASH_SALE_EVENT_ID:-}
+      FLASH_SALE_SEAT_IDS: ${FLASH_SALE_SEAT_IDS:-}
+      IDEMPOTENCY_PREFIX: ${IDEMPOTENCY_PREFIX:-locust-test}
+    networks:
+      - encore-net
+
+networks:
+  encore-net:
+    external: true
+    name: docker_encore-net

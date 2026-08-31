@@ -61,6 +61,21 @@ def engine() -> Engine:
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE orders (
+                    id TEXT PRIMARY KEY,
+                    event_id TEXT,
+                    user_id TEXT,
+                    status TEXT,
+                    total_cents INTEGER,
+                    idempotency_key TEXT,
+                    created_at TEXT
+                )
+                """
+            )
+        )
     return eng
 
 
@@ -142,3 +157,91 @@ def test_tick_ignores_null_expires_at(engine: Engine, worker: HoldExpiryWorker) 
     with engine.begin() as conn:
         res = conn.execute(text("SELECT status FROM inventory WHERE id = '4'")).scalar()
         assert res == "HELD"
+
+
+class _FakeRedis:
+    """Minimal Redis stand-in for testing key deletion."""
+
+    def __init__(self) -> None:
+        self.deleted: list[str] = []
+
+    def delete(self, *keys: str) -> int:
+        self.deleted.extend(keys)
+        return len(keys)
+
+
+def test_tick_deletes_redis_keys_on_expiry(engine: Engine) -> None:
+    """When a hold expires, the worker deletes both the hold lock and status cache keys."""
+    fake_redis = _FakeRedis()
+    worker_with_redis = HoldExpiryWorker(
+        engine=engine,
+        producer=None,
+        poll_interval_secs=10,
+        redis_client=fake_redis,
+    )
+
+    with engine.begin() as conn:
+        past = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=5)).isoformat()
+        conn.execute(
+            text(
+                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, held_at, hold_expires_at) "
+                f"VALUES ('5', 'event-X', 'seat-Y', 'HELD', 'u2', '2020-01-01', '{past}')"
+            )
+        )
+
+    count = worker_with_redis._tick()
+    assert count == 1
+
+    # Both hold lock key and status key must have been deleted
+    assert "hold:event-X:seat-Y" in fake_redis.deleted
+    assert "inventory:5:status" in fake_redis.deleted
+
+
+def test_tick_no_redis_keys_deleted_when_no_expiry(engine: Engine) -> None:
+    """Worker does not call redis.delete when there are no expired holds."""
+    fake_redis = _FakeRedis()
+    worker_with_redis = HoldExpiryWorker(
+        engine=engine,
+        producer=None,
+        poll_interval_secs=10,
+        redis_client=fake_redis,
+    )
+
+    with engine.begin() as conn:
+        future = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=10)).isoformat()
+        conn.execute(
+            text(
+                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, hold_expires_at) "
+                f"VALUES ('6', 'event-Z', 'seat-W', 'HELD', 'u3', '{future}')"
+            )
+        )
+
+    count = worker_with_redis._tick()
+    assert count == 0
+    assert fake_redis.deleted == []
+
+def test_tick_expires_pending_orders_tied_to_expired_holds(engine: Engine, worker: HoldExpiryWorker) -> None:
+    """When a hold expires, any PENDING orders for that event/user are marked EXPIRED."""
+    with engine.begin() as conn:
+        past = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=5)).isoformat()
+        conn.execute(
+            text(
+                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, hold_expires_at) "
+                f"VALUES ('7', 'event-ORD', 'seat-ORD', 'HELD', 'u-ord', '{past}')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO orders (id, event_id, user_id, status, total_cents, idempotency_key) "
+                "VALUES ('order-1', 'event-ORD', 'u-ord', 'PENDING', 1000, 'idem-1')"
+            )
+        )
+
+    count = worker._tick()
+    assert count == 1
+
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT status FROM orders WHERE id = 'order-1'")).fetchone()
+        assert row is not None
+        assert row[0] == "EXPIRED"
+

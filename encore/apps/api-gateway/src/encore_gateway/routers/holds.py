@@ -1,16 +1,13 @@
-"""POST /api/v1/holds.
+"""POST /api/v1/holds — create a seat hold.
+DELETE /api/v1/holds/{inventory_id} — release a seat hold.
 
 The "select seat" step of docs/architecture/vertical-slice-plan.md.
 
-KNOWN, TRACKED SIMPLIFICATION: this uses a plain UPDATE ... WHERE
-status='AVAILABLE', not `SELECT ... FOR UPDATE` and not a TTL-based
-expiry. Two concurrent requests for the same seat can both read
-AVAILABLE before either UPDATE commits, so — unlike the WHERE clause
-below — this is not actually race-proof under real concurrency yet. That
-race is exactly what Weeks 7-8 (Inventory Core, Hot Inventory) close, with
-load-test evidence. Recorded here, not hidden: see
-docs/architecture/vertical-slice-plan.md's "what is explicitly mocked"
-table and ADR-0003.
+Week 7: SELECT ... FOR UPDATE (pessimistic locking baseline — ADR-0010).
+Week 8: Redis SETNX fast-path guard before the Postgres lock (ADR-0011).
+  - SETNX eliminates DB lock contention for the 99% case (seat already held).
+  - Postgres FOR UPDATE remains the authoritative correctness guarantee.
+  - If Redis is down, the Postgres lock catches all races (graceful degradation).
 
 Idempotency-Key is enforced per docs/api/api-conventions.md sections 3/7 —
 POST /holds is explicitly listed as a required-idempotency endpoint.
@@ -22,7 +19,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from encore_cache import CacheClient, event_seats_key, invalidate
+from encore_cache import CacheClient, event_seats_key, hold_key, invalidate, inventory_status_key
 from encore_common import error_envelope, success_envelope
 from encore_event_contracts import (
     SEAT_HELD_EVENT_TYPE,
@@ -38,7 +35,7 @@ from encore_id_generator import SnowflakeIDGenerator
 from encore_kafka_client import build_envelope
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
@@ -141,25 +138,51 @@ def create_hold(
     if existing is not None:
         return JSONResponse(status_code=existing.status_code, content=json.loads(existing.response_json))
 
+    # --- Week 8: Redis SETNX fast-path guard ---
+    # Attempt to acquire a per-seat lock BEFORE the Postgres SELECT FOR UPDATE.
+    # If another user already holds the Redis key → 409 immediately, no DB lock acquired.
+    # If Redis is unavailable (NullCacheClient) → skip, correctness falls back to Postgres.
+    _redis_lock_key = hold_key(str(payload.event_id), str(payload.seat_id))
+    _acquired_redis_lock = False
+    _redis = getattr(cache, "_redis", None)
+    if _redis is not None:
+        acquired = _redis.set(
+            _redis_lock_key,
+            str(current_user.id),
+            nx=True,
+            ex=settings.hold_ttl_seconds,
+        )
+        if not acquired:
+            body = error_envelope("SEAT_ALREADY_HELD", "Seat is already held.", request_id)
+            save_idempotent_response(db, idempotency_key, ENDPOINT_NAME, 409, body)
+            db.commit()
+            return JSONResponse(status_code=409, content=body)
+        _acquired_redis_lock = True
+
     # Week 7: Use SELECT ... FOR UPDATE to acquire a row-level exclusive lock.
     # We do NOT use SKIP LOCKED here — if another concurrent request is holding the lock,
     # we want to wait (briefly) and then correctly return 409 SEAT_ALREADY_HELD.
     inventory_row = db.execute(
         select(Inventory)
         .where(
-            Inventory.event_id == payload.event_id, 
-            Inventory.seat_id == payload.seat_id
+            Inventory.event_id == payload.event_id,
+            Inventory.seat_id == payload.seat_id,
         )
         .with_for_update()
     ).scalar_one_or_none()
 
     if inventory_row is None:
+        if _acquired_redis_lock and _redis is not None:
+            _redis.delete(_redis_lock_key)  # compensate: release the lock we took
         raise HTTPException(
             status_code=404, detail=error_envelope("SEAT_NOT_FOUND", "No such seat for this event.", request_id)
         )
 
+    # --- Week 8: If domain check fails, release the Redis lock (compensating action) ---
     transition = can_hold(DomainInventoryStatus(inventory_row.status.value))
     if not transition.allowed:
+        if _acquired_redis_lock and _redis is not None:
+            _redis.delete(_redis_lock_key)
         body = error_envelope(transition.reason, "Seat is not available to hold.", request_id)
         save_idempotent_response(db, idempotency_key, ENDPOINT_NAME, 409, body)
         db.commit()
@@ -188,7 +211,18 @@ def create_hold(
     save_idempotent_response(db, idempotency_key, ENDPOINT_NAME, 201, body)
     db.commit()
 
-    # Invalidate the seats cache
+    # --- Week 8: Update per-seat status cache after successful commit ---
+    if _redis is not None:
+        try:
+            _redis.set(
+                inventory_status_key(str(inventory_row.id)),
+                InventoryStatus.HELD.value,
+                ex=settings.hold_ttl_seconds,
+            )
+        except Exception:
+            pass  # Cache write failure never blocks the response
+
+    # Invalidate the seats list cache
     invalidate(cache, event_seats_key(str(payload.event_id)))
 
     # --- Emit Kafka event (Week 5) ---
@@ -259,8 +293,17 @@ def release_hold(
     inventory_row.hold_expires_at = None
     db.commit()
 
-    # 4. Cache invalidate
+    # 4. Cache invalidate (seats list + individual status + Redis SETNX lock)
+    _redis = getattr(cache, "_redis", None)
     invalidate(cache, event_seats_key(str(event_id)))
+    if _redis is not None:
+        try:
+            _redis.delete(
+                hold_key(str(event_id), str(seat_id)),
+                inventory_status_key(str(inventory_id)),
+            )
+        except Exception:
+            pass  # Redis failure never blocks the release
 
     # 5. Emit Kafka event
     producer = getattr(request.app.state, "kafka_producer", None)

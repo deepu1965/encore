@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     expiry_advisory_lock_id: int = 1001
 
     @property
+    def hold_ttl_seconds(self) -> int:
+        """Hold TTL as integer seconds — for use with Redis SETNX EX argument."""
+        return max(1, int(self.hold_ttl_minutes * 60))
+
+    @property
     def database_url(self) -> str:
         return (
             f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"

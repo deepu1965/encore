@@ -19,9 +19,11 @@ Key namespace constants:
   Collected here as a single source of truth. All callers import keys from
   this module rather than hand-rolling strings, so a rename touches one
   place. Examples:
-    event_key("42")         → "event:42"
-    event_seats_key("42")   → "event:42:seats"
-    session_key("u1")       → "session:u1"
+    event_key("42")                          → "event:42"
+    event_seats_key("42")                    → "event:42:seats"
+    session_key("u1")                        → "session:u1"
+    hold_key("evt-1", "seat-2")              → "hold:evt-1:seat-2"
+    inventory_status_key("inv-3")            → "inventory:inv-3:status"
 
 Serialization:
   cache_aside serializes / deserializes values as JSON strings. The
@@ -72,6 +74,33 @@ def event_seats_key(event_id: str) -> str:
 def session_key(user_id: str) -> str:
     """Cache key for user session data: session:{user_id}"""
     return f"session:{user_id}"
+
+
+def hold_key(event_id: str, seat_id: str) -> str:
+    """Redis key for the SETNX per-seat hold lock (Week 8).
+
+    Namespace: hold:{event_id}:{seat_id}
+    Value: user_id of the holder (informational; not used for auth checks).
+    TTL: matches hold_ttl_seconds (default 300s / 5 min).
+
+    The key is acquired via SETNX before the Postgres FOR UPDATE — it acts
+    as a fast-path guard to eliminate DB lock contention in the common case.
+    The Postgres row lock remains the authoritative correctness guarantee.
+    """
+    return f"hold:{event_id}:{seat_id}"
+
+
+def inventory_status_key(inventory_id: str) -> str:
+    """Redis key for the per-seat inventory status cache (Week 8).
+
+    Namespace: inventory:{inventory_id}:status
+    Value: 'AVAILABLE' | 'HELD' | 'SOLD'
+    TTL: TTL_SEATS_SECONDS (30 s), refreshed on every write.
+
+    Used by GET /api/v1/inventory/{inventory_id} as a cache-aside read,
+    and populated on every successful hold/release/purchase transition.
+    """
+    return f"inventory:{inventory_id}:status"
 
 
 def rate_limit_key(identity: str) -> str:

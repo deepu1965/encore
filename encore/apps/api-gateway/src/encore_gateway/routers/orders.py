@@ -125,44 +125,18 @@ def create_order(
         db.commit()
         return JSONResponse(status_code=409, content=body)
 
-    # --- Mock payment: always succeeds, synchronously. ---
-    payment_succeeded = True
-    if not payment_succeeded:  # pragma: no cover
-        body = error_envelope("PAYMENT_FAILED", "Mock payment failed.", request_id)
-        return JSONResponse(status_code=402, content=body)
-
-    # --- Create order + ticket (Snowflake IDs, Week 4) ---
+    # --- Create PENDING order (Snowflake IDs, Week 4) ---
     order_id = _new_id()
-    ticket_id = _new_id()
 
     order = Order(
         id=order_id,
         user_id=current_user.id,
         event_id=payload.event_id,
-        status=OrderStatus.COMPLETED,
+        status=OrderStatus.PENDING,
         total_cents=inventory_row.price_cents,
         idempotency_key=idempotency_key,
     )
     db.add(order)
-
-    result = db.execute(
-        update(Inventory)
-        .where(Inventory.id == inventory_row.id, Inventory.status == InventoryStatus.HELD)
-        .values(status=InventoryStatus.SOLD)
-    )
-    if result.rowcount == 0:
-        db.rollback()
-        body = error_envelope("SEAT_ALREADY_SOLD", "Seat was sold by another request.", request_id)
-        return JSONResponse(status_code=409, content=body)
-
-    ticket = Ticket(
-        id=ticket_id,
-        order_id=order.id,
-        inventory_id=inventory_row.id,
-        ticket_code=generate_ticket_code(str(order.id), sequence=0),
-    )
-    db.add(ticket)
-
     db.flush()  # assign server defaults (created_at) before building the response
 
     order_out = OrderOut(
@@ -172,40 +146,12 @@ def create_order(
         status=order.status,
         total_cents=order.total_cents,
         created_at=order.created_at,
-        tickets=[
-            TicketOut(id=ticket.id, ticket_code=ticket.ticket_code, status=ticket.status, seat_id=payload.seat_id)
-        ],
+        tickets=[],
     )
     body = success_envelope(order_out.model_dump(mode="json"), request_id=request_id)
 
     save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, 201, body)
     db.commit()
-
-    # Invalidate the seats cache
-    invalidate(cache, event_seats_key(str(payload.event_id)))
-
-    # --- Emit Kafka event (Week 5) ---
-    producer = getattr(request.app.state, "kafka_producer", None)
-    if producer is not None:
-        envelope = build_envelope(
-            event_type=ORDER_COMPLETED_EVENT_TYPE,
-            event_version=ORDER_COMPLETED_VERSION,
-            key=str(order.id),  # Partition by order_id
-            payload=OrderCompletedPayload(
-                order_id=str(order.id),
-                user_id=str(order.user_id),
-                event_id=str(order.event_id),
-                seat_id=str(payload.seat_id),
-                total_cents=order.total_cents,
-                ticket_id=str(ticket.id),
-                ticket_code=ticket.ticket_code,
-                completed_at=order.created_at.isoformat(),
-            ).to_dict(),
-            producer_name=request.app.state.kafka_producer.producer_name,
-            trace_id=request_id,
-            id_generator=_id_gen,
-        )
-        producer.publish(ORDER_COMPLETED_TOPIC, envelope)
 
     return JSONResponse(status_code=201, content=body)
 

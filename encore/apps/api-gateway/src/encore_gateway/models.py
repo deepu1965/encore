@@ -63,6 +63,7 @@ class OrderStatus(str, enum.Enum):
     PENDING = "PENDING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    EXPIRED = "EXPIRED"
 
 
 class TicketStatus(str, enum.Enum):

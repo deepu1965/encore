@@ -11,15 +11,22 @@ Week 3 scope:
   - key namespace conventions
   - graceful Redis-down fallback (NullCacheClient)
 
-NOT in Week 3 scope (later weeks):
-  - SETNX seat reservation locks (Week 8)
-  - distributed locking (Week 8)
-  - TTL expiry background jobs (Week 9)
+Week 8 scope:
+  - hold_key           Redis SETNX seat hold lock
+  - inventory_status_key  Per-seat availability status cache
 """
 
 from .client import CacheClient, NullCacheClient, RedisCacheClient
 from .consistent_hashing import ConsistentHashRing
-from .helpers import cache_aside, event_key, event_seats_key, invalidate, session_key
+from .helpers import (
+    cache_aside,
+    event_key,
+    event_seats_key,
+    hold_key,
+    invalidate,
+    inventory_status_key,
+    session_key,
+)
 
 __all__ = [
     "CacheClient",
@@ -30,5 +37,7 @@ __all__ = [
     "event_key",
     "event_seats_key",
     "session_key",
+    "hold_key",
+    "inventory_status_key",
     "ConsistentHashRing",
 ]

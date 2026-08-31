@@ -6,9 +6,16 @@ UPDATE ... RETURNING to find and release any holds where
 
 PostgreSQL Advisory Lock:
     To support running multiple API Gateway instances (horizontal scaling),
-    this worker uses `pg_try_advisory_lock`. Only the instance that acquires
-    the lock will actually execute the expiry query. This prevents lock
-    contention and duplicate Kafka events.
+    this worker uses `pg_try_advisory_xact_lock`. Only the instance that
+    acquires the lock will execute the expiry query. This prevents duplicate
+    Kafka events.
+
+Redis cleanup (Week 8):
+    When a hold is expired in Postgres, the matching Redis SETNX lock key
+    (hold:{event_id}:{seat_id}) and the per-seat status cache key
+    (inventory:{inventory_id}:status) are also deleted so subsequent hold
+    requests are not spuriously rejected by a stale Redis lock.
+    If redis_client is None, Redis cleanup is skipped (backward-compatible).
 """
 
 from __future__ import annotations
@@ -40,11 +47,13 @@ class HoldExpiryWorker:
         producer: KafkaEventProducer | None,
         poll_interval_secs: int,
         advisory_lock_id: int = 1001,
+        redis_client: object | None = None,
     ) -> None:
         self._engine = engine
         self._producer = producer
         self._poll_interval_secs = poll_interval_secs
         self._advisory_lock_id = advisory_lock_id
+        self._redis = redis_client  # optional — for Week 8 Redis key cleanup
         self._id_gen = SnowflakeIDGenerator()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -102,25 +111,57 @@ class HoldExpiryWorker:
                 # Another instance is holding the lock, skip this tick
                 return 0
 
-            # 2. Execute the expiry query
-            # We use string matching to avoid depending on ORM models here.
-            query = text(
+            # 2. Find expired holds
+            select_query = text(
                 """
+                SELECT id, event_id, seat_id, held_by_user_id
+                FROM inventory
+                WHERE status = 'HELD'
+                  AND hold_expires_at IS NOT NULL
+                  AND hold_expires_at < NOW()
+                """
+            )
+            result = conn.execute(select_query)
+            rows = result.fetchall()
+            expired_count = len(rows)
+
+            if expired_count == 0:
+                return 0
+
+            expired_ids = [row[0] for row in rows]
+            placeholders = ", ".join(f":id_{i}" for i in range(len(expired_ids)))
+
+            # 3. Update them to AVAILABLE
+            update_query = text(
+                f"""
                 UPDATE inventory
                 SET status = 'AVAILABLE',
                     held_by_user_id = NULL,
                     held_at = NULL,
                     hold_expires_at = NULL,
                     updated_at = NOW()
-                WHERE status = 'HELD'
-                  AND hold_expires_at IS NOT NULL
-                  AND hold_expires_at < NOW()
-                RETURNING id, event_id, seat_id, held_by_user_id
+                WHERE id IN ({placeholders})
                 """
             )
-            result = conn.execute(query)
-            rows = result.fetchall()
-            expired_count = len(rows)
+            params = {f"id_{i}": val for i, val in enumerate(expired_ids)}
+            conn.execute(update_query, params)
+
+
+            # 2b. Expire any PENDING orders tied to these holds
+            for row in rows:
+                _, event_id, _, was_held_by_user_id = row
+                if was_held_by_user_id:
+                    conn.execute(
+                        text("""
+                        UPDATE orders
+                        SET status = 'EXPIRED'
+                        WHERE event_id = :event_id
+                          AND user_id = :user_id
+                          AND status = 'PENDING'
+                        """),
+                        {"event_id": event_id, "user_id": was_held_by_user_id}
+                    )
+
 
             # 3. Emit Kafka events
             now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
@@ -140,8 +181,30 @@ class HoldExpiryWorker:
                     was_held_by_user_id=str(was_held_by_user_id),
                     expired_at=now,
                 )
+                # 4. Delete stale Redis keys (Week 8)
+                self._delete_redis_keys(
+                    event_id=str(event_id),
+                    seat_id=str(seat_id),
+                    inventory_id=str(inventory_id),
+                )
 
         return expired_count
+
+    def _delete_redis_keys(self, event_id: str, seat_id: str, inventory_id: str) -> None:
+        """Delete the Redis SETNX hold lock and status cache on hold expiry.
+
+        Silently skipped if no Redis client was provided (backward-compat).
+        Errors are caught and logged — Redis failure must never block expiry.
+        """
+        if self._redis is None:
+            return
+        try:
+            hold_k = f"hold:{event_id}:{seat_id}"
+            status_k = f"inventory:{inventory_id}:status"
+            self._redis.delete(hold_k, status_k)
+            logger.debug("Deleted Redis keys on hold expiry: %s, %s", hold_k, status_k)
+        except Exception as exc:
+            logger.warning("Failed to delete Redis keys on hold expiry: %s", exc)
 
     def _emit_expired_event(
         self,
