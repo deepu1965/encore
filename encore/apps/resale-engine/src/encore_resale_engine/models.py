@@ -31,3 +31,13 @@ class ResaleOrder(Base):
     bid_price_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[ListingStatus] = mapped_column(Enum(ListingStatus, name="resale_order_status"), nullable=False, default=ListingStatus.ACTIVE)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ResaleTrade(Base):
+    __tablename__ = "resale_trades"
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    listing_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("resale_listings.id"), nullable=False, unique=True)
+    order_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("resale_orders.id"), nullable=False, unique=True)
+    price_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

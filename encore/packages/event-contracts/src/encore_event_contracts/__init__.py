@@ -34,7 +34,20 @@ from .events.waitingroom import (
     WaitingRoomAdmittedPayload,
     WaitingRoomJoinedPayload,
 )
-from .events.payment import (
+from .events.resale import (
+    RESALE_LISTING_CREATED_EVENT_TYPE,
+    RESALE_LISTING_CREATED_TOPIC,
+    RESALE_LISTING_CREATED_VERSION,
+    RESALE_ORDER_CREATED_EVENT_TYPE,
+    RESALE_ORDER_CREATED_TOPIC,
+    RESALE_ORDER_CREATED_VERSION,
+    RESALE_TRADE_MATCHED_EVENT_TYPE,
+    RESALE_TRADE_MATCHED_TOPIC,
+    RESALE_TRADE_MATCHED_VERSION,
+    ResaleListingCreatedPayload,
+    ResaleOrderCreatedPayload,
+    ResaleTradeMatchedPayload,
+)\n\nfrom .events.payment import (
     PAYMENT_SUCCEEDED_EVENT_TYPE,
     PAYMENT_FAILED_EVENT_TYPE,
     PAYMENT_TOPIC,
@@ -75,5 +88,16 @@ __all__ = [
     "PAYMENT_VERSION",
     "PaymentSucceededPayload",
     "PaymentFailedPayload",
+    "RESALE_LISTING_CREATED_EVENT_TYPE",
+    "RESALE_LISTING_CREATED_TOPIC",
+    "RESALE_LISTING_CREATED_VERSION",
+    "ResaleListingCreatedPayload",
+    "RESALE_ORDER_CREATED_EVENT_TYPE",
+    "RESALE_ORDER_CREATED_TOPIC",
+    "RESALE_ORDER_CREATED_VERSION",
+    "ResaleOrderCreatedPayload",
+    "RESALE_TRADE_MATCHED_EVENT_TYPE",
+    "RESALE_TRADE_MATCHED_TOPIC",
+    "RESALE_TRADE_MATCHED_VERSION",
+    "ResaleTradeMatchedPayload",
 ]
-
