@@ -57,4 +57,4 @@ services:
 networks:
   encore-net:
     external: true
-    name: docker_encore-net
+    name: docker_default

@@ -13,8 +13,8 @@ COPY apps/waiting-room/src ./apps/waiting-room/src
 
 RUN pip install --no-cache-dir -e ./packages/common \
     && pip install --no-cache-dir -e ./packages/event-contracts \
-    && pip install --no-cache-dir -e ./packages/kafka-client \
     && pip install --no-cache-dir -e ./packages/id-generator \
+    && pip install --no-cache-dir -e ./packages/kafka-client \
     && pip install --no-cache-dir -e ./apps/waiting-room
 
 WORKDIR /app/apps/waiting-room

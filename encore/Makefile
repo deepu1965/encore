@@ -14,16 +14,16 @@ COMPOSE_FILE := infrastructure/docker/docker-compose.yml
         load-test-contention load-test-flash-sale
 
 up: ## Start local infra (Postgres, Redis, Kafka)
-	docker compose -f $(COMPOSE_FILE) up -d
+	docker-compose -f $(COMPOSE_FILE) up -d
 
 down: ## Stop local infra
-	docker compose -f $(COMPOSE_FILE) down
+	docker-compose -f $(COMPOSE_FILE) down
 
 logs: ## Tail infra logs
-	docker compose -f $(COMPOSE_FILE) logs -f
+	docker-compose -f $(COMPOSE_FILE) logs -f
 
 ps: ## Show infra container status
-	docker compose -f $(COMPOSE_FILE) ps
+	docker-compose -f $(COMPOSE_FILE) ps
 
 test-common: ## Run packages/common's test suite
 	cd packages/common && pip install -e ".[dev]" -q && pytest -v
@@ -111,21 +111,21 @@ load-test-contention: ## Scenario A — concurrent hold contention (50 users, 30
 	  -f ../../infrastructure/docker/docker-compose.yml \
 	  -f docker-compose.locust.yml \
 	  --env-file .env.locust \
-	  run --rm locust-master \
-	  -f /mnt/locust/locustfile.py --headless -u 50 -r 50 --run-time 30s --tags contention
+	  run --rm --use-aliases locust-master \
+	  -f /mnt/locust/locustfile.py --headless -u 50 -r 50 --run-time 30s HoldContentionUser
 
 load-test-flash-sale: ## Scenario B — flash-sale throughput (100 users, 60s). Requires .env.locust
 	cd tests/load && docker compose \
 	  -f ../../infrastructure/docker/docker-compose.yml \
 	  -f docker-compose.locust.yml \
 	  --env-file .env.locust \
-	  run --rm locust-master \
-	  -f /mnt/locust/locustfile.py --headless -u 100 -r 20 --run-time 60s --tags flash-sale
+	  run --rm --use-aliases locust-master \
+	  -f /mnt/locust/locustfile.py --headless -u 100 -r 20 --run-time 60s FlashSaleUser
 
 load-test-checkout: ## Scenario C — full checkout saga (50 users, 60s). Requires .env.locust
-	cd tests/load && docker compose \
+	cd tests/load && docker-compose --project-directory . \
 	  -f ../../infrastructure/docker/docker-compose.yml \
 	  -f docker-compose.locust.yml \
 	  --env-file .env.locust \
-	  run --rm locust-master \
-	  -f /mnt/locust/locustfile.py --headless -u 50 -r 10 --run-time 60s --tags checkout
+	  run --rm --use-aliases locust-master \
+	  -f /mnt/locust/locustfile.py --headless -u 50 -r 10 --run-time 60s CheckoutSagaUser

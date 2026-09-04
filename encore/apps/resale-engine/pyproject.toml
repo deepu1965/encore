@@ -1,0 +1,10 @@
+[project]
+name = "encore_resale_engine"
+version = "0.1.0"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "sqlalchemy",
+    "psycopg2-binary",
+    "pydantic",
+]

@@ -43,6 +43,10 @@ CREATE_ENDPOINT_NAME = "POST /api/v1/payments"
 _id_gen = SnowflakeIDGenerator()
 
 
+import httpx
+
+from ..config import settings
+
 @router.post("", status_code=201)
 def process_payment(
     payload: PaymentCreate,
@@ -50,7 +54,6 @@ def process_payment(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    cache: CacheClient = Depends(get_cache),
 ) -> JSONResponse:
     request_id = getattr(request.state, "request_id", "")
 
@@ -67,7 +70,7 @@ def process_payment(
 
     # --- Load Order ---
     order = db.execute(
-        select(Order).options(selectinload(Order.tickets)).where(Order.id == payload.order_id)
+        select(Order).where(Order.id == payload.order_id)
     ).scalar_one_or_none()
 
     if order is None:
@@ -82,112 +85,32 @@ def process_payment(
 
     if order.status != OrderStatus.PENDING:
         body = error_envelope("INVALID_ORDER_STATE", f"Order is in {order.status} state, expected PENDING.", request_id)
-        # Even if they reuse a new idempotency key on an already completed order, reject it.
         save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, 409, body)
         db.commit()
         return JSONResponse(status_code=409, content=body)
 
-    # We need the inventory row to either release it or mark it sold.
-    # We find the inventory row that belongs to this order's event and is currently held by this user.
-    inventory_row = db.execute(
-        select(Inventory).where(
-            Inventory.event_id == order.event_id,
-            Inventory.held_by_user_id == current_user.id,
-            Inventory.status == InventoryStatus.HELD
+    # Make internal synchronous HTTP call to payment-service
+    payment_payload = {
+        "order_id": str(order.id),
+        "user_id": str(order.user_id),
+        "amount_cents": order.total_cents,
+    }
+
+    try:
+        with httpx.Client() as client:
+            resp = client.post(
+                f"{settings.payment_service_url}/payments/charge",
+                json=payment_payload,
+                headers={"Idempotency-Key": idempotency_key, "X-Request-Id": request_id},
+                timeout=5.0,
+            )
+            
+            # Record response in our gateway idempotency table too
+            save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, resp.status_code, resp.json())
+            db.commit()
+            
+            return JSONResponse(status_code=resp.status_code, content=resp.json())
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=502, detail=error_envelope("PAYMENT_SERVICE_UNAVAILABLE", str(e), request_id)
         )
-    ).scalar_one_or_none()
-
-    if inventory_row is None:
-        # If the hold naturally expired before payment was processed, we fail the order.
-        order.status = OrderStatus.EXPIRED
-        db.commit()
-        body = error_envelope("HOLD_EXPIRED", "The seat hold has expired. Order cancelled.", request_id)
-        save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, 409, body)
-        db.commit()
-        return JSONResponse(status_code=409, content=body)
-
-    # --- Mock Payment Failure Path ---
-    if idempotency_key.startswith("fail_"):
-        order.status = OrderStatus.FAILED
-        
-        # Release the seat hold
-        inventory_row.status = InventoryStatus.AVAILABLE
-        inventory_row.held_by_user_id = None
-        inventory_row.held_at = None
-        inventory_row.hold_expires_at = None
-        
-        db.flush()
-        
-        body = error_envelope("PAYMENT_FAILED", "Mock payment failed.", request_id)
-        save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, 402, body)
-        db.commit()
-        
-        # Clean up Redis caches to reflect the seat is available again
-        cache.delete(hold_key(str(inventory_row.event_id), str(inventory_row.seat_id)))
-        cache.delete(inventory_status_key(str(inventory_row.id)))
-        invalidate(cache, event_seats_key(str(inventory_row.event_id)))
-        
-        return JSONResponse(status_code=402, content=body)
-
-    # --- Mock Payment Success Path ---
-    order.status = OrderStatus.COMPLETED
-    
-    inventory_row.status = InventoryStatus.SOLD
-    # Keep held_by_user_id since they are the purchaser, but the hold timestamp isn't relevant anymore
-    # Though usually we keep it or it doesn't matter since status=SOLD
-    
-    ticket_id = _id_gen.next_id().as_uuid()
-    ticket = Ticket(
-        id=ticket_id,
-        order_id=order.id,
-        inventory_id=inventory_row.id,
-        ticket_code=generate_ticket_code(str(order.id), sequence=0),
-    )
-    db.add(ticket)
-    db.flush()
-    
-    order_out = OrderOut(
-        id=order.id,
-        event_id=order.event_id,
-        user_id=order.user_id,
-        status=order.status,
-        total_cents=order.total_cents,
-        created_at=order.created_at,
-        tickets=[
-            TicketOut(id=ticket.id, ticket_code=ticket.ticket_code, status=ticket.status, seat_id=inventory_row.seat_id)
-        ],
-    )
-    body = success_envelope(order_out.model_dump(mode="json"), request_id=request_id)
-    
-    save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, 201, body)
-    db.commit()
-    
-    # Update Redis cache
-    cache.set(inventory_status_key(str(inventory_row.id)), InventoryStatus.SOLD.value)
-    # The hold key will expire naturally, or we can delete it. It's safe to let it expire.
-    invalidate(cache, event_seats_key(str(inventory_row.event_id)))
-    
-    # --- Emit Kafka event ---
-    producer = getattr(request.app.state, "kafka_producer", None)
-    if producer is not None:
-        envelope = build_envelope(
-            event_type=ORDER_COMPLETED_EVENT_TYPE,
-            event_version=ORDER_COMPLETED_VERSION,
-            key=str(order.id),
-            payload=OrderCompletedPayload(
-                order_id=str(order.id),
-                user_id=str(order.user_id),
-                event_id=str(order.event_id),
-                seat_id=str(inventory_row.seat_id),
-                total_cents=order.total_cents,
-                ticket_id=str(ticket.id),
-                ticket_code=ticket.ticket_code,
-                completed_at=order.created_at.isoformat(),
-            ).to_dict(),
-            producer_name=request.app.state.kafka_producer.producer_name,
-            trace_id=request_id,
-            id_generator=_id_gen,
-        )
-        producer.publish(ORDER_COMPLETED_TOPIC, envelope)
-        
-    return JSONResponse(status_code=201, content=body)

@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
 
     expiry_worker.stop()
     close_producer(app)
-    close_cache()
+    close_cache(cache)
     app.state.cache = None
 
 

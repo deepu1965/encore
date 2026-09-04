@@ -40,6 +40,12 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
     return mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
 
+class AuditEventType(str, enum.Enum):
+    ISSUED = "ISSUED"
+    TRANSFERRED = "TRANSFERRED"
+    REVOKED = "REVOKED"
+
+
 class UserRole(str, enum.Enum):
     BUYER = "BUYER"
     ORGANIZER = "ORGANIZER"
@@ -219,4 +225,17 @@ class IdempotencyRecord(Base):
     endpoint: Mapped[str] = mapped_column(String(255), primary_key=True)
     status_code: Mapped[int] = mapped_column(Integer, nullable=False)
     response_json: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    ticket_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    event_type: Mapped[AuditEventType] = mapped_column(
+        Enum(AuditEventType, name="audit_event_type"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    previous_owner_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    new_owner_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -34,6 +34,14 @@ from .events.waitingroom import (
     WaitingRoomAdmittedPayload,
     WaitingRoomJoinedPayload,
 )
+from .events.payment import (
+    PAYMENT_SUCCEEDED_EVENT_TYPE,
+    PAYMENT_FAILED_EVENT_TYPE,
+    PAYMENT_TOPIC,
+    PAYMENT_VERSION,
+    PaymentSucceededPayload,
+    PaymentFailedPayload,
+)
 
 __all__ = [
     "EventEnvelope",
@@ -61,5 +69,11 @@ __all__ = [
     "WAITING_ROOM_ADMITTED_TOPIC",
     "WAITING_ROOM_ADMITTED_VERSION",
     "WaitingRoomAdmittedPayload",
+    "PAYMENT_SUCCEEDED_EVENT_TYPE",
+    "PAYMENT_FAILED_EVENT_TYPE",
+    "PAYMENT_TOPIC",
+    "PAYMENT_VERSION",
+    "PaymentSucceededPayload",
+    "PaymentFailedPayload",
 ]
 

@@ -15,6 +15,7 @@ dependencies = [
     "encore-event-contracts",
     "encore-kafka-client",
     "encore-hold-expiry",
+    "httpx>=0.27",
     # encore-common is installed separately from ../../packages/common —
     # see README.md "Local development" for install order. Not declared
     # as a normal dependency here because it's a local path package and

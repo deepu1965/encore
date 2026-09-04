@@ -75,5 +75,10 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
+    jwt_secret_key: str = "super_secret_week2_key"
+    jwt_algorithm: str = "HS256"
+
+    payment_service_url: str = "http://localhost:8002"
+
 
 settings = Settings()
