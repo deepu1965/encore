@@ -71,3 +71,45 @@ class ResaleTradeMatchedPayload:
             "buyer_id": self.buyer_id,
             "matched_at": self.matched_at,
         }
+
+RESALE_TRADE_SETTLED_EVENT_TYPE = "resale.trade.settled"
+RESALE_TRADE_SETTLED_TOPIC = "resale.trade"
+RESALE_TRADE_SETTLED_VERSION = 1
+
+RESALE_TRADE_FAILED_EVENT_TYPE = "resale.trade.failed"
+RESALE_TRADE_FAILED_TOPIC = "resale.trade"
+RESALE_TRADE_FAILED_VERSION = 1
+
+@dataclass
+class ResaleTradeSettledPayload:
+    trade_id: str
+    event_id: str
+    seller_id: str
+    buyer_id: str
+    price_cents: int
+    settled_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "trade_id": self.trade_id,
+            "event_id": self.event_id,
+            "seller_id": self.seller_id,
+            "buyer_id": self.buyer_id,
+            "price_cents": self.price_cents,
+            "settled_at": self.settled_at,
+        }
+
+@dataclass
+class ResaleTradeFailedPayload:
+    trade_id: str
+    event_id: str
+    reason: str
+    failed_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "trade_id": self.trade_id,
+            "event_id": self.event_id,
+            "reason": self.reason,
+            "failed_at": self.failed_at,
+        }

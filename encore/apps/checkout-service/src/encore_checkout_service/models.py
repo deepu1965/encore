@@ -239,3 +239,40 @@ class AuditEvent(Base):
     previous_owner_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     new_owner_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+import enum
+import uuid
+from datetime import datetime
+from sqlalchemy import Enum, Integer, String, func, ForeignKey, DateTime
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+class SagaStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    BUYER_CHARGED = "BUYER_CHARGED"
+    SELLER_CREDITED = "SELLER_CREDITED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    COMPENSATED = "COMPENSATED"
+
+class ResaleSagaState(Base):
+    __tablename__ = "resale_saga_states"
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    trade_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, unique=True)
+    status: Mapped[SagaStatus] = mapped_column(Enum(SagaStatus, name="saga_status"), nullable=False, default=SagaStatus.PENDING)
+    error_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class CheckoutTransactionType(str, enum.Enum):
+    CREDIT = "CREDIT"
+    DEBIT = "DEBIT"
+
+class CheckoutWalletLedger(Base):
+    __tablename__ = "checkout_wallet_ledger"
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    wallet_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    transaction_type: Mapped[CheckoutTransactionType] = mapped_column(Enum(CheckoutTransactionType, name="checkout_transaction_type_enum"), nullable=False)
+    reference_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
