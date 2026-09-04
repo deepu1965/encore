@@ -3,6 +3,7 @@ import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from encore_kafka_client import KafkaEventProducer
+from encore_common import setup_observability
 from .routers import resale
 from .consumer import MatchingEngineConsumer
 
@@ -38,6 +39,9 @@ async def lifespan(app: FastAPI):
         app.state.kafka_producer = None
 
 app = FastAPI(title="Encore Resale Engine", lifespan=lifespan)
+
+# Initialize metrics, structured logging, and OpenTelemetry
+setup_observability(app, "resale-engine")
 
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):

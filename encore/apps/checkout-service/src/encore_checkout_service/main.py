@@ -4,6 +4,7 @@ import logging
 from fastapi import FastAPI
 from sqlalchemy import create_engine
 from encore_kafka_client import KafkaEventProducer
+from encore_common import setup_observability
 
 from .config import settings
 from .consumer import CheckoutOrchestrator
@@ -44,6 +45,9 @@ async def lifespan(app: FastAPI):
     redis_client.close()
 
 app = FastAPI(title="Encore Checkout Service", lifespan=lifespan)
+
+# Initialize metrics, structured logging, and OpenTelemetry
+setup_observability(app, "checkout-service")
 
 @app.get("/health")
 def health_check():

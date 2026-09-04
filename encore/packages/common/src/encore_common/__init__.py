@@ -7,12 +7,16 @@ limiting, observability) lives in its own sibling package, not here —
 see docs/architecture/service-boundaries.md.
 """
 
-from .envelope import error_envelope, success_envelope
-from .health import HealthStatus, health_check
+from .envelope import EventEnvelope, error_envelope, success_envelope
+from .health import HealthResult, HealthStatus, health_check
+from .observability import setup_observability
 
 __all__ = [
-    "success_envelope",
+    "EventEnvelope",
+    "HealthResult",
+    "HealthStatus",
     "error_envelope",
     "health_check",
-    "HealthStatus",
+    "success_envelope",
+    "setup_observability",
 ]

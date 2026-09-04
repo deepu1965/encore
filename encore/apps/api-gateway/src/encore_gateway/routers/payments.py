@@ -45,7 +45,15 @@ _id_gen = SnowflakeIDGenerator()
 
 import httpx
 
+from encore_common.circuit_breaker import CircuitBreaker, CircuitOpenException
 from ..config import settings
+
+payment_cb = CircuitBreaker(failure_threshold=5, recovery_timeout_sec=30.0)
+
+@payment_cb
+def _post_payment(url: str, json_data: dict, headers: dict) -> httpx.Response:
+    with httpx.Client() as client:
+        return client.post(url, json=json_data, headers=headers, timeout=5.0)
 
 @router.post("", status_code=201)
 def process_payment(
@@ -97,19 +105,21 @@ def process_payment(
     }
 
     try:
-        with httpx.Client() as client:
-            resp = client.post(
-                f"{settings.payment_service_url}/payments/charge",
-                json=payment_payload,
-                headers={"Idempotency-Key": idempotency_key, "X-Request-Id": request_id},
-                timeout=5.0,
-            )
-            
-            # Record response in our gateway idempotency table too
-            save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, resp.status_code, resp.json())
-            db.commit()
-            
-            return JSONResponse(status_code=resp.status_code, content=resp.json())
+        resp = _post_payment(
+            f"{settings.payment_service_url}/payments/charge",
+            json_data=payment_payload,
+            headers={"Idempotency-Key": idempotency_key, "X-Request-Id": request_id}
+        )
+        
+        # Record response in our gateway idempotency table too
+        save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, resp.status_code, resp.json())
+        db.commit()
+        
+        return JSONResponse(status_code=resp.status_code, content=resp.json())
+    except CircuitOpenException as e:
+        raise HTTPException(
+            status_code=503, detail=error_envelope("PAYMENT_SERVICE_UNAVAILABLE", "Circuit breaker OPEN: " + str(e), request_id)
+        )
     except httpx.RequestError as e:
         raise HTTPException(
             status_code=502, detail=error_envelope("PAYMENT_SERVICE_UNAVAILABLE", str(e), request_id)

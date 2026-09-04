@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 from contextlib import asynccontextmanager
 
-from encore_common import error_envelope
+from encore_common import error_envelope, setup_observability
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -17,7 +17,7 @@ from .cache import close_cache, init_cache
 from .kafka_producer import close_producer, init_producer
 from .middleware.rate_limit import RateLimitMiddleware
 from .rate_limit import init_rate_limiters
-from .routers import events, health, holds, inventory, orders, payments
+from .routers import events, health, holds, inventory, orders, payments, tickets
 
 
 @asynccontextmanager
@@ -66,6 +66,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Encore API Gateway", version="0.1.0", lifespan=lifespan)
+
+# Initialize metrics, structured logging, and OpenTelemetry
+setup_observability(app, "api-gateway")
 
 # ---------------------------------------------------------------------------
 # Middleware
@@ -131,3 +134,4 @@ app.include_router(holds.router)
 app.include_router(inventory.router)
 app.include_router(orders.router)
 app.include_router(payments.router)
+app.include_router(tickets.router)

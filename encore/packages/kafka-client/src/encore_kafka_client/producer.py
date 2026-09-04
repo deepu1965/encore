@@ -12,6 +12,7 @@ from typing import Any
 from encore_event_contracts import EventEnvelope
 from kafka import KafkaProducer  # type: ignore[import-untyped]
 from kafka.errors import KafkaError  # type: ignore[import-untyped]
+from opentelemetry import propagate
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,12 @@ class KafkaEventProducer:
             self._send_to_dlq(topic, key, value_json, str(exc))
 
         try:
-            future = self._producer.send(topic, key=key, value=value_json)
+            # Inject OpenTelemetry context for distributed tracing
+            headers_dict = {}
+            propagate.inject(headers_dict)
+            headers = [(k, v.encode("utf-8")) for k, v in headers_dict.items()]
+
+            future = self._producer.send(topic, key=key, value=value_json, headers=headers)
             future.add_callback(on_success)
             future.add_errback(on_error)
             return True

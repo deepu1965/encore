@@ -21,34 +21,47 @@ class HealthStatus(str, Enum):
 class HealthResult:
     status: HealthStatus
     service: str
-    checks: dict[str, bool] = field(default_factory=dict)
+    dependencies: dict[str, str] = field(default_factory=dict)
+    http_code: int = 200
 
     def as_dict(self) -> dict:
         return {
             "status": self.status.value,
             "service": self.service,
-            "checks": self.checks,
+            "dependencies": self.dependencies,
         }
 
 
-def health_check(service: str, dependency_checks: dict[str, bool] | None = None) -> HealthResult:
+def health_check(
+    service: str, 
+    critical_deps: dict[str, bool] | None = None,
+    non_critical_deps: dict[str, bool] | None = None
+) -> HealthResult:
     """Aggregate dependency checks into a single health status.
 
     Args:
         service: Name of the calling service, e.g. "inventory-service".
-        dependency_checks: Map of dependency name -> bool (True = healthy).
-            Empty/None means "no external dependencies to check" -> OK.
+        critical_deps: Map of critical dependency name -> bool (True = healthy). If any is False, status=DOWN, code=503.
+        non_critical_deps: Map of non-critical dependency name -> bool. If any is False, status=DEGRADED, code=200.
     """
-    checks = dependency_checks or {}
+    critical_deps = critical_deps or {}
+    non_critical_deps = non_critical_deps or {}
+    
+    dependencies = {}
+    for name, is_ok in critical_deps.items():
+        dependencies[name] = "ok" if is_ok else "down"
+    for name, is_ok in non_critical_deps.items():
+        dependencies[name] = "ok" if is_ok else "degraded"
 
-    if not checks:
-        return HealthResult(status=HealthStatus.OK, service=service, checks=checks)
+    if not critical_deps and not non_critical_deps:
+        return HealthResult(status=HealthStatus.OK, service=service, dependencies=dependencies, http_code=200)
 
-    if all(checks.values()):
-        status = HealthStatus.OK
-    elif any(checks.values()):
-        status = HealthStatus.DEGRADED
-    else:
-        status = HealthStatus.DOWN
+    # Check critical first
+    if any(not is_ok for is_ok in critical_deps.values()):
+        return HealthResult(status=HealthStatus.DOWN, service=service, dependencies=dependencies, http_code=503)
 
-    return HealthResult(status=status, service=service, checks=checks)
+    # Check non-critical
+    if any(not is_ok for is_ok in non_critical_deps.values()):
+        return HealthResult(status=HealthStatus.DEGRADED, service=service, dependencies=dependencies, http_code=200)
+
+    return HealthResult(status=HealthStatus.OK, service=service, dependencies=dependencies, http_code=200)
