@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     postgres_user: str = "encore"
     postgres_password: str = "encore_dev_only"
     postgres_db: str = "encore"
+    postgres_write_db: str = "encore"
+    postgres_read_db: str = "encore"
+    postgres_shard_urls: str = ""
 
     # ------------------------------------------------------------------ Redis (Week 3)
     redis_host: str = "localhost"
@@ -70,10 +73,28 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        # Legacy fallback
+        return self.database_write_url
+
+    @property
+    def database_write_url(self) -> str:
         return (
             f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_write_db}"
         )
+        
+    @property
+    def database_read_url(self) -> str:
+        return (
+            f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_read_db}"
+        )
+        
+    @property
+    def shard_urls(self) -> list[str]:
+        if not self.postgres_shard_urls:
+            return []
+        return [url.strip() for url in self.postgres_shard_urls.split(",") if url.strip()]
 
     jwt_secret_key: str = "super_secret_week2_key"
     jwt_algorithm: str = "HS256"

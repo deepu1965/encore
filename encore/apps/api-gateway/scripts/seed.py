@@ -20,14 +20,14 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from encore_gateway.db import SessionLocal
+from encore_gateway.db import SessionWrite, shard_manager
 from encore_gateway.models import Event, EventStatus, Inventory, InventoryStatus, Seat, User, UserRole, Venue
 
 DEMO_VENUE_NAME = "Encore Arena"
 
 
 def seed() -> None:
-    db = SessionLocal()
+    db = SessionWrite()
     try:
         existing = db.query(Venue).filter_by(name=DEMO_VENUE_NAME).one_or_none()
         if existing is not None:
@@ -78,6 +78,43 @@ def seed() -> None:
                 db.add(inventory)
 
         db.commit()
+
+        # --- Seed the Shard DB ---
+        shard_db = shard_manager.get_session(event.id)
+        try:
+            # Replicate Venue and Event to shard
+            shard_venue = Venue(id=venue.id, name=venue.name, city=venue.city, timezone=venue.timezone)
+            shard_db.add(shard_venue)
+            shard_event = Event(
+                id=event.id, venue_id=venue.id, name=event.name,
+                starts_at=event.starts_at, status=event.status
+            )
+            shard_db.add(shard_event)
+            shard_db.flush()
+
+            for section, base_price in (("A", 5000), ("B", 3000)):
+                for seat_number in range(1, 11):
+                    seat = Seat(
+                        id=uuid.uuid4(),
+                        venue_id=venue.id,
+                        section=section,
+                        row_label="1",
+                        seat_number=str(seat_number),
+                    )
+                    shard_db.add(seat)
+                    shard_db.flush()
+
+                    inventory = Inventory(
+                        id=uuid.uuid4(),
+                        event_id=event.id,
+                        seat_id=seat.id,
+                        status=InventoryStatus.AVAILABLE,
+                        price_cents=base_price,
+                    )
+                    shard_db.add(inventory)
+            shard_db.commit()
+        finally:
+            shard_db.close()
 
         print("Seed complete.")
         print(f"  demo user id (use as Bearer token): {user.id}")

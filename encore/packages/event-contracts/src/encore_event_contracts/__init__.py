@@ -55,7 +55,9 @@ from .events.resale import (
     RESALE_TRADE_FAILED_VERSION,
     ResaleTradeSettledPayload,
     ResaleTradeFailedPayload,
-)\n\nfrom .events.payment import (
+)
+
+from .events.payment import (
     PAYMENT_SUCCEEDED_EVENT_TYPE,
     PAYMENT_FAILED_EVENT_TYPE,
     PAYMENT_TOPIC,

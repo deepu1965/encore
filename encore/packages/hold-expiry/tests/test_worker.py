@@ -82,7 +82,8 @@ def engine() -> Engine:
 @pytest.fixture
 def worker(engine: Engine) -> HoldExpiryWorker:
     return HoldExpiryWorker(
-        engine=engine,
+        primary_engine=engine,
+        shard_engines=[engine],
         producer=None,
         poll_interval_secs=10,
     )
@@ -174,7 +175,8 @@ def test_tick_deletes_redis_keys_on_expiry(engine: Engine) -> None:
     """When a hold expires, the worker deletes both the hold lock and status cache keys."""
     fake_redis = _FakeRedis()
     worker_with_redis = HoldExpiryWorker(
-        engine=engine,
+        primary_engine=engine,
+        shard_engines=[engine],
         producer=None,
         poll_interval_secs=10,
         redis_client=fake_redis,
@@ -201,7 +203,8 @@ def test_tick_no_redis_keys_deleted_when_no_expiry(engine: Engine) -> None:
     """Worker does not call redis.delete when there are no expired holds."""
     fake_redis = _FakeRedis()
     worker_with_redis = HoldExpiryWorker(
-        engine=engine,
+        primary_engine=engine,
+        shard_engines=[engine],
         producer=None,
         poll_interval_secs=10,
         redis_client=fake_redis,

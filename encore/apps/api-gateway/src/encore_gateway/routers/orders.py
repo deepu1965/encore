@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..auth import get_current_user
 from ..cache import get_cache
-from ..db import get_db
+from ..db import get_db, get_db_read
 from ..domain.inventory_state import InventoryStatus as DomainInventoryStatus
 from ..domain.inventory_state import can_purchase, generate_ticket_code
 from ..idempotency import get_idempotent_response, save_idempotent_response
@@ -102,30 +102,38 @@ def create_order(
     if existing is not None:
         return JSONResponse(status_code=existing.status_code, content=json.loads(existing.response_json))
 
-    # --- Load inventory ---
-    inventory_row = db.execute(
-        select(Inventory).where(
-            Inventory.event_id == payload.event_id, Inventory.seat_id == payload.seat_id
+    from ..db import shard_manager
+    shard_db = shard_manager.get_session(payload.event_id)
+    try:
+        # --- Load inventory from SHARD ---
+        inventory_row = shard_db.execute(
+            select(Inventory).where(
+                Inventory.event_id == payload.event_id, Inventory.seat_id == payload.seat_id
+            )
+        ).scalar_one_or_none()
+
+        if inventory_row is None:
+            raise HTTPException(
+                status_code=404, detail=error_envelope("SEAT_NOT_FOUND", "No such seat for this event.", request_id)
+            )
+
+        transition = can_purchase(
+            DomainInventoryStatus(inventory_row.status.value),
+            held_by_user_id=inventory_row.held_by_user_id,
+            requesting_user_id=current_user.id,
         )
-    ).scalar_one_or_none()
+        if not transition.allowed:
+            body = error_envelope(transition.reason, "Seat cannot be purchased in its current state.", request_id)
+            save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, 409, body)
+            db.commit()
+            return JSONResponse(status_code=409, content=body)
 
-    if inventory_row is None:
-        raise HTTPException(
-            status_code=404, detail=error_envelope("SEAT_NOT_FOUND", "No such seat for this event.", request_id)
-        )
+        # Store the price from the shard to use in the primary DB transaction
+        price_cents = inventory_row.price_cents
+    finally:
+        shard_db.close()
 
-    transition = can_purchase(
-        DomainInventoryStatus(inventory_row.status.value),
-        held_by_user_id=inventory_row.held_by_user_id,
-        requesting_user_id=current_user.id,
-    )
-    if not transition.allowed:
-        body = error_envelope(transition.reason, "Seat cannot be purchased in its current state.", request_id)
-        save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, 409, body)
-        db.commit()
-        return JSONResponse(status_code=409, content=body)
-
-    # --- Create PENDING order (Snowflake IDs, Week 4) ---
+    # --- Create PENDING order in PRIMARY (Snowflake IDs, Week 4) ---
     order_id = _new_id()
 
     order = Order(
@@ -133,7 +141,7 @@ def create_order(
         user_id=current_user.id,
         event_id=payload.event_id,
         status=OrderStatus.PENDING,
-        total_cents=inventory_row.price_cents,
+        total_cents=price_cents,
         idempotency_key=idempotency_key,
     )
     db.add(order)
@@ -157,7 +165,7 @@ def create_order(
 
 
 @router.get("/{order_id}")
-def get_order(order_id: uuid.UUID, request: Request, db: Session = Depends(get_db)) -> dict:
+def get_order(order_id: uuid.UUID, request: Request, db: Session = Depends(get_db_read)) -> dict:
     request_id = getattr(request.state, "request_id", "")
 
     order = db.execute(
@@ -168,11 +176,18 @@ def get_order(order_id: uuid.UUID, request: Request, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail=error_envelope("ORDER_NOT_FOUND", "No such order.", request_id))
 
     tickets_out = []
-    for ticket in order.tickets:
-        inv = db.get(Inventory, ticket.inventory_id)
-        tickets_out.append(
-            TicketOut(id=ticket.id, ticket_code=ticket.ticket_code, status=ticket.status, seat_id=inv.seat_id)
-        )
+    
+    from ..db import shard_manager
+    shard_db = shard_manager.get_session(order.event_id)
+    try:
+        for ticket in order.tickets:
+            inv = shard_db.get(Inventory, ticket.inventory_id)
+            if inv:
+                tickets_out.append(
+                    TicketOut(id=ticket.id, ticket_code=ticket.ticket_code, status=ticket.status, seat_id=inv.seat_id)
+                )
+    finally:
+        shard_db.close()
 
     order_out = OrderOut(
         id=order.id,

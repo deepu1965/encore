@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..cache import get_cache
-from ..db import get_db
+from ..db import get_db, get_db_read
 from ..models import Inventory
 
 router = APIRouter(prefix="/api/v1/inventory", tags=["inventory"])
@@ -35,7 +35,7 @@ router = APIRouter(prefix="/api/v1/inventory", tags=["inventory"])
 def get_inventory_status(
     inventory_id: uuid.UUID,
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_read),
     cache: CacheClient = Depends(get_cache),
 ) -> dict:
     """Return the current status and price of a single inventory row.

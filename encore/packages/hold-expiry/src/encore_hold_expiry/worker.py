@@ -43,13 +43,15 @@ class HoldExpiryWorker:
 
     def __init__(
         self,
-        engine: Engine,
+        primary_engine: Engine,
+        shard_engines: list[Engine],
         producer: KafkaEventProducer | None,
         poll_interval_secs: int,
         advisory_lock_id: int = 1001,
         redis_client: object | None = None,
     ) -> None:
-        self._engine = engine
+        self._primary_engine = primary_engine
+        self._shard_engines = shard_engines
         self._producer = producer
         self._poll_interval_secs = poll_interval_secs
         self._advisory_lock_id = advisory_lock_id
@@ -100,9 +102,9 @@ class HoldExpiryWorker:
 
         # Note: We use a transaction-level lock so it is automatically released
         # when the transaction commits or rolls back.
-        with self._engine.begin() as conn:
-            # 1. Try to acquire the advisory lock
-            lock_res = conn.execute(
+        with self._primary_engine.begin() as primary_conn:
+            # 1. Try to acquire the advisory lock on primary
+            lock_res = primary_conn.execute(
                 text("SELECT pg_try_advisory_xact_lock(:lock_id)"),
                 {"lock_id": self._advisory_lock_id}
             ).scalar()
@@ -111,82 +113,84 @@ class HoldExpiryWorker:
                 # Another instance is holding the lock, skip this tick
                 return 0
 
-            # 2. Find expired holds
-            select_query = text(
-                """
-                SELECT id, event_id, seat_id, held_by_user_id
-                FROM inventory
-                WHERE status = 'HELD'
-                  AND hold_expires_at IS NOT NULL
-                  AND hold_expires_at < NOW()
-                """
-            )
-            result = conn.execute(select_query)
-            rows = result.fetchall()
-            expired_count = len(rows)
-
-            if expired_count == 0:
-                return 0
-
-            expired_ids = [row[0] for row in rows]
-            placeholders = ", ".join(f":id_{i}" for i in range(len(expired_ids)))
-
-            # 3. Update them to AVAILABLE
-            update_query = text(
-                f"""
-                UPDATE inventory
-                SET status = 'AVAILABLE',
-                    held_by_user_id = NULL,
-                    held_at = NULL,
-                    hold_expires_at = NULL,
-                    updated_at = NOW()
-                WHERE id IN ({placeholders})
-                """
-            )
-            params = {f"id_{i}": val for i, val in enumerate(expired_ids)}
-            conn.execute(update_query, params)
-
-
-            # 2b. Expire any PENDING orders tied to these holds
-            for row in rows:
-                _, event_id, _, was_held_by_user_id = row
-                if was_held_by_user_id:
-                    conn.execute(
-                        text("""
-                        UPDATE orders
-                        SET status = 'EXPIRED'
-                        WHERE event_id = :event_id
-                          AND user_id = :user_id
-                          AND status = 'PENDING'
-                        """),
-                        {"event_id": event_id, "user_id": was_held_by_user_id}
+            for shard_engine in self._shard_engines:
+                with shard_engine.begin() as shard_conn:
+                    # 2. Find expired holds
+                    select_query = text(
+                        """
+                        SELECT id, event_id, seat_id, held_by_user_id
+                        FROM inventory
+                        WHERE status = 'HELD'
+                          AND hold_expires_at IS NOT NULL
+                          AND hold_expires_at < NOW()
+                        """
                     )
+                    result = shard_conn.execute(select_query)
+                    rows = result.fetchall()
+                    if not rows:
+                        continue
+
+                    expired_count += len(rows)
+                    expired_ids = [row[0] for row in rows]
+                    placeholders = ", ".join(f":id_{i}" for i in range(len(expired_ids)))
+
+                    # 3. Update them to AVAILABLE
+                    update_query = text(
+                        f"""
+                        UPDATE inventory
+                        SET status = 'AVAILABLE',
+                            held_by_user_id = NULL,
+                            held_at = NULL,
+                            hold_expires_at = NULL,
+                            updated_at = NOW()
+                        WHERE id IN ({placeholders})
+                        """
+                    )
+                    params = {f"id_{i}": val for i, val in enumerate(expired_ids)}
+                    shard_conn.execute(update_query, params)
+
+                    # 2b. Expire any PENDING orders tied to these holds
+                    for row in rows:
+                        _, event_id, _, was_held_by_user_id = row
+                        if was_held_by_user_id:
+                            primary_conn.execute(
+                                text("""
+                                UPDATE orders
+                                SET status = 'EXPIRED'
+                                WHERE event_id = :event_id
+                                  AND user_id = :user_id
+                                  AND status = 'PENDING'
+                                """),
+                                {"event_id": event_id, "user_id": was_held_by_user_id}
+                            )
+
+                    # 3. Emit Kafka events
+                    now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+                    if now.endswith("+00:00"):
+                        now = now[:-6] + "Z"
+
+                    for row in rows:
+                        inventory_id, event_id, seat_id, was_held_by_user_id = row
+                        logger.info(
+                            "Hold expired for inventory %s (event %s, seat %s)",
+                            inventory_id, event_id, seat_id
+                        )
+                        self._emit_expired_event(
+                            event_id=str(event_id),
+                            seat_id=str(seat_id),
+                            inventory_id=str(inventory_id),
+                            was_held_by_user_id=str(was_held_by_user_id),
+                            expired_at=now,
+                        )
+                        # 4. Delete stale Redis keys (Week 8)
+                        self._delete_redis_keys(
+                            event_id=str(event_id),
+                            seat_id=str(seat_id),
+                            inventory_id=str(inventory_id),
+                        )
 
 
-            # 3. Emit Kafka events
-            now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-            if now.endswith("+00:00"):
-                now = now[:-6] + "Z"
 
-            for row in rows:
-                inventory_id, event_id, seat_id, was_held_by_user_id = row
-                logger.info(
-                    "Hold expired for inventory %s (event %s, seat %s)",
-                    inventory_id, event_id, seat_id
-                )
-                self._emit_expired_event(
-                    event_id=str(event_id),
-                    seat_id=str(seat_id),
-                    inventory_id=str(inventory_id),
-                    was_held_by_user_id=str(was_held_by_user_id),
-                    expired_at=now,
-                )
-                # 4. Delete stale Redis keys (Week 8)
-                self._delete_redis_keys(
-                    event_id=str(event_id),
-                    seat_id=str(seat_id),
-                    inventory_id=str(inventory_id),
-                )
 
         return expired_count
 

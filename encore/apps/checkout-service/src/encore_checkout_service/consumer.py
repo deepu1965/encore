@@ -7,6 +7,7 @@ import hashlib
 
 from kafka import KafkaConsumer
 from sqlalchemy import select
+from sqlalchemy import select, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from encore_event_contracts import (
@@ -64,6 +65,22 @@ class CheckoutOrchestrator(threading.Thread):
         else:
             self.cache = None
 
+        # Shard setup
+        from .config import settings
+        self.shard_engines = []
+        self.shard_session_factories = []
+        for url in settings.shard_urls:
+            e = create_engine(url, pool_pre_ping=True, future=True)
+            self.shard_engines.append(e)
+            self.shard_session_factories.append(sessionmaker(bind=e, autoflush=False, autocommit=False, future=True))
+
+    def get_shard_session(self, event_id: str | uuid.UUID) -> Session:
+        if not self.shard_engines:
+            return self.SessionLocal()
+        h = hashlib.sha256(str(event_id).encode("utf-8")).hexdigest()
+        idx = int(h, 16) % len(self.shard_engines)
+        return self.shard_session_factories[idx]()
+
     def run(self) -> None:
         logger.info("Starting CheckoutOrchestrator consumer...")
         try:
@@ -86,7 +103,7 @@ class CheckoutOrchestrator(threading.Thread):
                 for record in records:
                     envelope = record.value
                     event_type = envelope.get("event_type")
-                                        if event_type == PAYMENT_SUCCEEDED_EVENT_TYPE:
+                    if event_type == PAYMENT_SUCCEEDED_EVENT_TYPE:
                         self.handle_payment_succeeded(envelope)
                     elif event_type == PAYMENT_FAILED_EVENT_TYPE:
                         self.handle_payment_failed(envelope)

@@ -106,13 +106,21 @@ def _validate_waiting_room_token(
             ),
         )
 
+def get_shard_db_for_hold(payload: HoldCreate):
+    from ..db import shard_manager
+    db = shard_manager.get_session(payload.event_id)
+    try:
+        yield db
+    finally:
+        db.close()
+
 @router.post("", status_code=201)
 def create_hold(
     payload: HoldCreate,
     request: Request,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     waiting_room_token: str | None = Header(default=None, alias="X-Waiting-Room-Token"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_shard_db_for_hold),
     current_user: User = Depends(get_current_user),
     cache: CacheClient = Depends(get_cache),
 ) -> JSONResponse:
@@ -120,9 +128,9 @@ def create_hold(
 
     # --- Waiting-room admission guard (Week 6) ---
     _validate_waiting_room_token(
-        event_id=str(payload.event_id),
-        token=waiting_room_token,
-        cache=cache,
+        str(payload.event_id),
+        waiting_room_token,
+        cache,
         request_id=request_id,
     )
 
@@ -253,16 +261,26 @@ def create_hold(
 def release_hold(
     inventory_id: UUID,
     request: Request,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     cache: CacheClient = Depends(get_cache),
 ) -> JSONResponse:
     request_id = getattr(request.state, "request_id", "")
+    from ..db import shard_manager
 
-    # 1. Lock the row
-    inventory_row = db.execute(
-        select(Inventory).where(Inventory.id == inventory_id).with_for_update()
-    ).scalar_one_or_none()
+    # Scatter-gather across shards to find the inventory row
+    inventory_row = None
+    db = None
+    for session_factory in shard_manager.session_factories:
+        test_db = session_factory()
+        inventory_row = test_db.execute(
+            select(Inventory).where(Inventory.id == inventory_id).with_for_update()
+        ).scalar_one_or_none()
+        
+        if inventory_row is not None:
+            db = test_db
+            break
+        else:
+            test_db.close()
 
     if inventory_row is None:
         raise HTTPException(
@@ -326,7 +344,11 @@ def release_hold(
         )
         producer.publish(SEAT_RELEASED_TOPIC, envelope)
 
-    return JSONResponse(
-        status_code=200,
-        content=success_envelope({"inventory_id": str(inventory_id), "released": True}, request_id)
-    )
+    try:
+        return JSONResponse(
+            status_code=200,
+            content=success_envelope({"inventory_id": str(inventory_id), "released": True}, request_id)
+        )
+    finally:
+        if db is not None:
+            db.close()

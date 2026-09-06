@@ -28,9 +28,10 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, Index, func, Boolean as sa_Boolean, text as sa_text
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -85,8 +86,31 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="user_role"), nullable=False, default=UserRole.BUYER
     )
+    is_mega_organizer: Mapped[bool] = mapped_column(sa_Boolean, nullable=False, server_default=sa_text('false'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+class UserFollow(Base):
+    __tablename__ = "user_follows"
+
+    follower_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    organizer_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("events.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class ShortUrl(Base):
+    __tablename__ = "short_urls"
+
+    id: Mapped[str] = mapped_column(String(10), primary_key=True)
+    event_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("events.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 class Venue(Base):
     __tablename__ = "venues"
@@ -109,6 +133,8 @@ class Event(Base):
         PG_UUID(as_uuid=True), ForeignKey("venues.id"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    search_vector: Mapped[Any | None] = mapped_column(TSVECTOR, nullable=True)
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[EventStatus] = mapped_column(
         Enum(EventStatus, name="event_status"), nullable=False, default=EventStatus.SCHEDULED
@@ -117,6 +143,10 @@ class Event(Base):
 
     venue: Mapped["Venue"] = relationship(back_populates="events")
     inventory_rows: Mapped[list["Inventory"]] = relationship(back_populates="event")
+
+    __table_args__ = (
+        Index("ix_events_search_vector", "search_vector", postgresql_using="gin"),
+    )
 
 
 class Seat(Base):
@@ -159,7 +189,7 @@ class Inventory(Base):
     )
     price_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     held_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        PG_UUID(as_uuid=True), nullable=True, index=True
     )
     held_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     hold_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

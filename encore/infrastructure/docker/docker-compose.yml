@@ -25,6 +25,85 @@ services:
       timeout: 5s
       retries: 10
 
+  postgres-shard-0:
+    image: postgres:16-alpine
+    container_name: encore-postgres-shard-0
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: encore
+      POSTGRES_PASSWORD: encore_dev_only
+      POSTGRES_DB: encore_shard
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U encore -d encore_shard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-shard-1:
+    image: postgres:16-alpine
+    container_name: encore-postgres-shard-1
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: encore
+      POSTGRES_PASSWORD: encore_dev_only
+      POSTGRES_DB: encore_shard
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U encore -d encore_shard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-shard-2:
+    image: postgres:16-alpine
+    container_name: encore-postgres-shard-2
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: encore
+      POSTGRES_PASSWORD: encore_dev_only
+      POSTGRES_DB: encore_shard
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U encore -d encore_shard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: encore-pgbouncer
+    restart: unless-stopped
+    environment:
+      DB_USER: encore
+      DB_PASSWORD: encore_dev_only
+      DB_HOST: postgres
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "100"
+      DEFAULT_POOL_SIZE: "20"
+    volumes:
+      - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    ports:
+      - "6432:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-shard-0:
+        condition: service_healthy
+      postgres-shard-1:
+        condition: service_healthy
+      postgres-shard-2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U encore -d encore"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     container_name: encore-redis
@@ -32,6 +111,17 @@ services:
     ports:
       - "6380:6379"
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis-replica:
+    image: redis:7-alpine
+    container_name: encore-redis-replica
+    restart: unless-stopped
+    command: ["redis-server", "--replicaof", "redis", "6379", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -74,14 +164,15 @@ services:
     build:
       context: ../..
       dockerfile: apps/api-gateway/Dockerfile
-    container_name: encore-api-gateway
     restart: unless-stopped
     environment:
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: pgbouncer
       POSTGRES_PORT: "5432"
       POSTGRES_USER: encore
       POSTGRES_PASSWORD: encore_dev_only
-      POSTGRES_DB: encore
+      POSTGRES_WRITE_DB: encore
+      POSTGRES_READ_DB: encore
+      POSTGRES_SHARD_URLS: "postgresql+psycopg2://encore:encore_dev_only@pgbouncer:5432/shard_0,postgresql+psycopg2://encore:encore_dev_only@pgbouncer:5432/shard_1,postgresql+psycopg2://encore:encore_dev_only@pgbouncer:5432/shard_2"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -93,8 +184,6 @@ services:
       RATE_LIMIT_GLOBAL_CAPACITY: "5000"
       RATE_LIMIT_GLOBAL_PER_SECOND: "5000.0"
       PAYMENT_SERVICE_URL: "http://payment-service:8002"
-    ports:
-      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -144,7 +233,7 @@ services:
     environment:
       REDIS_HOSTS: local:redis:6379
     ports:
-      - "8081:8081"
+      - "8082:8081"
     depends_on:
       - redis
 
@@ -155,12 +244,12 @@ services:
     container_name: encore-payment-service
     restart: unless-stopped
     environment:
-      DB_URI: postgresql://encore:encore_dev_only@postgres:5432/encore
+      DATABASE_URL: "postgresql://encore:encore_dev_only@pgbouncer:5432/encore"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     ports:
       - "8002:8002"
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -174,12 +263,13 @@ services:
     ports:
       - "8003:8003"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/encore
+      - DATABASE_URL=postgresql://encore:encore_dev_only@pgbouncer:5432/encore
+      - POSTGRES_SHARD_URLS=postgresql://encore:encore_dev_only@pgbouncer:5432/shard_0,postgresql://encore:encore_dev_only@pgbouncer:5432/shard_1,postgresql://encore:encore_dev_only@pgbouncer:5432/shard_2
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -218,6 +308,17 @@ services:
       - "16686:16686" # UI
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: encore-nginx
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-gateway
 
 volumes:
   postgres_data:

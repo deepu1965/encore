@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import uuid
+import logging
 from contextlib import asynccontextmanager
 
 from encore_common import error_envelope, setup_observability
@@ -13,12 +14,15 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from .cache import close_cache, init_cache
+from .cache import close_cache, init_cache, get_cache
 from .kafka_producer import close_producer, init_producer
 from .middleware.rate_limit import RateLimitMiddleware
 from .rate_limit import init_rate_limiters
-from .routers import events, health, holds, inventory, orders, payments, tickets
+from .routers import events, health, holds, inventory, orders, payments, tickets, search, short_urls, feed, chat
+from .routers.chat import start_redis_pubsub, get_redis_url
+import asyncio
 
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,9 +50,13 @@ async def lifespan(app: FastAPI):
 
     # Extract raw Redis client for the expiry worker (Week 8 key cleanup)
     _redis_for_worker = getattr(cache, "_redis", None)
+    
+    from encore_gateway.db import get_shard_engines
+    _shard_engines = list(get_shard_engines().values())
 
     expiry_worker = HoldExpiryWorker(
-        engine=engine,
+        primary_engine=engine,
+        shard_engines=_shard_engines,
         producer=producer,
         poll_interval_secs=settings.expiry_poll_interval_secs,
         advisory_lock_id=settings.expiry_advisory_lock_id,
@@ -56,9 +64,16 @@ async def lifespan(app: FastAPI):
     )
     expiry_worker.start()
     app.state.expiry_worker = expiry_worker
+    
+    # Start Redis PubSub Listener for Chat
+    redis_url = get_redis_url(cache)
+    pubsub_task = asyncio.create_task(start_redis_pubsub(redis_url))
 
     yield
 
+    if not pubsub_task.done():
+        pubsub_task.cancel()
+    
     expiry_worker.stop()
     close_producer(app)
     close_cache(cache)
@@ -135,3 +150,7 @@ app.include_router(inventory.router)
 app.include_router(orders.router)
 app.include_router(payments.router)
 app.include_router(tickets.router)
+app.include_router(search.router)
+app.include_router(short_urls.router)
+app.include_router(feed.router)
+app.include_router(chat.router)
