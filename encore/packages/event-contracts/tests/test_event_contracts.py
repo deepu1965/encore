@@ -3,9 +3,9 @@
 import json
 
 from encore_event_contracts import (
-    EventEnvelope,
     SEAT_HELD_EVENT_TYPE,
     SEAT_HELD_VERSION,
+    EventEnvelope,
     SeatHeldPayload,
 )
 
@@ -17,6 +17,7 @@ def test_envelope_serialisation():
         inventory_id="inv_456",
         held_by_user_id="usr_789",
         held_at="2026-08-27T18:00:00Z",
+        hold_expires_at="2026-08-27T18:15:00Z",
     )
     env = EventEnvelope(
         event_id="snwflk_123",

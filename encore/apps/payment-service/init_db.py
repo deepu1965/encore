@@ -1,5 +1,6 @@
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.abspath('src'))
 from encore_payment_service.db import engine
 from encore_payment_service.models import Base

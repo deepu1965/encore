@@ -33,7 +33,7 @@ class SeatHeldPayload:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SeatHeldPayload":
+    def from_dict(cls, data: dict[str, Any]) -> SeatHeldPayload:
         return cls(**data)
 
 
@@ -51,7 +51,7 @@ class SeatReleasedPayload:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SeatReleasedPayload":
+    def from_dict(cls, data: dict[str, Any]) -> SeatReleasedPayload:
         return cls(**data)
 
 
@@ -69,6 +69,6 @@ class SeatHoldExpiredPayload:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SeatHoldExpiredPayload":
+    def from_dict(cls, data: dict[str, Any]) -> SeatHoldExpiredPayload:
         return cls(**data)
 

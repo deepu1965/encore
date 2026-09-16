@@ -1,15 +1,14 @@
 import uuid
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from encore_cache import CacheClient
+from fastapi import APIRouter, Depends, Query, Request
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 
-from ..db import get_db_read
-from ..models import Event
+from ..auth import get_current_user
 from ..cache import get_cache
-from encore_cache import CacheClient
+from ..db import get_db_read
 
 router = APIRouter(tags=["Feed"])
 
@@ -27,6 +26,7 @@ def get_user_feed(
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db_read),
     cache: CacheClient = Depends(get_cache),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Fetch the personalized event feed for a user.

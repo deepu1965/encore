@@ -13,7 +13,7 @@ from typing import Any
 from encore_event_contracts import EventEnvelope
 from kafka import KafkaConsumer  # type: ignore[import-untyped]
 from kafka.errors import KafkaError  # type: ignore[import-untyped]
-from opentelemetry import trace, propagate
+from opentelemetry import propagate, trace
 
 from .producer import KafkaEventProducer
 
@@ -131,7 +131,7 @@ class KafkaEventConsumer:
                             len(retries) + 1,
                             exc,
                         )
-                        self._dlq_producer._send_to_dlq(self.topic, envelope.key, raw_value, str(exc))
+                        self._dlq_producer._send_to_dlq(self.topic, envelope.key, raw_value, str(exc))  # noqa: E501
 
     def _sleep_with_heartbeat(self, duration: float) -> None:
         """Sleeps while continuing to send heartbeats by polling with paused partitions."""

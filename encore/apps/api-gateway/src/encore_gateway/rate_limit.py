@@ -19,10 +19,9 @@ and every check() call returns allowed=True.
 from __future__ import annotations
 
 import logging
-from collections.abc import Generator
 
 from encore_cache import CacheClient
-from encore_rate_limiter import RateLimiter, RateLimitConfig, RateLimitExceeded
+from encore_rate_limiter import RateLimitConfig, RateLimiter, RateLimitExceeded
 
 from .config import settings
 
@@ -75,6 +74,7 @@ def require_checkout_rate_limit(request):  # noqa: ANN001
     see orders.py for usage.
     """
     from fastapi import Depends, HTTPException  # local to avoid circular import
+
     from .auth import get_current_user
 
     def _inner(

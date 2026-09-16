@@ -20,8 +20,7 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from encore_event_contracts import (
     WAITING_ROOM_ADMITTED_EVENT_TYPE,
@@ -109,7 +108,7 @@ class AdmissionTicker:
         """Emit waitingroom.user.admitted — best-effort, non-blocking."""
         if self._producer is None:
             return
-        now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        now = datetime.now(UTC).isoformat(timespec="milliseconds")
         if now.endswith("+00:00"):
             now = now[:-6] + "Z"
         try:

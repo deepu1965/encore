@@ -24,7 +24,6 @@ import pytest
 
 from encore_id_generator import CUSTOM_EPOCH_MS, SnowflakeID, SnowflakeIDGenerator
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

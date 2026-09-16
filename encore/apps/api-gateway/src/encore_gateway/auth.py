@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import uuid
 
+import jwt as pyjwt
+from encore_auth.jwt import decode_token
 from encore_common import error_envelope
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
@@ -37,18 +39,24 @@ def get_current_user(
 
     raw_token = authorization.removeprefix("Bearer ").strip()
     try:
-        user_id = uuid.UUID(raw_token)
-    except ValueError as exc:
+        claims = decode_token(raw_token)
+        user_id = uuid.UUID(claims["sub"])
+    except pyjwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=401,
-            detail=error_envelope("INVALID_TOKEN", "Token is not a recognized user.", request_id=""),
-        ) from exc
+            detail=error_envelope("TOKEN_EXPIRED", "Token expired.", request_id=""),
+        )
+    except (pyjwt.InvalidTokenError, ValueError):
+        raise HTTPException(
+            status_code=401,
+            detail=error_envelope("INVALID_TOKEN", "Invalid token.", request_id=""),
+        )
 
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(
             status_code=401,
-            detail=error_envelope("INVALID_TOKEN", "Token is not a recognized user.", request_id=""),
+            detail=error_envelope("INVALID_TOKEN", "Token is not a recognized user.", request_id=""),  # noqa: E501
         )
     return user
 

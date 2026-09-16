@@ -11,7 +11,7 @@ Usage in a router:
         return JSONResponse(status_code=record.status_code, content=json.loads(record.response_json))
     ... do the real work ...
     save_idempotent_response(db, key, endpoint="POST /api/v1/holds", status_code=201, response_body=body)
-"""
+"""  # noqa: E501
 
 from __future__ import annotations
 

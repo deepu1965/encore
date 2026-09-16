@@ -27,5 +27,27 @@ class OrderCompletedPayload:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "OrderCompletedPayload":
+    def from_dict(cls, data: dict[str, Any]) -> OrderCompletedPayload:
+        return cls(**data)
+
+
+ORDER_CANCELLED_EVENT_TYPE = "order.cancelled"
+ORDER_CANCELLED_TOPIC = "order.cancelled"
+ORDER_CANCELLED_VERSION = 1
+
+
+@dataclass
+class OrderCancelledPayload:
+    """Payload for order.cancelled events."""
+
+    order_id: str
+    user_id: str
+    event_id: str
+    cancelled_at: str  # ISO 8601 UTC
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrderCancelledPayload:
         return cls(**data)

@@ -1,13 +1,10 @@
-import json
 import logging
 from datetime import datetime
-from typing import Any
-
-from sqlalchemy import text
-from sqlalchemy.engine import Engine
-from redis import Redis
 
 from encore_kafka_client import KafkaEventConsumer
+from redis import Redis
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +41,23 @@ class FeedWorker(KafkaEventConsumer):
             return
             
         with self.primary_engine.connect() as conn:
+            event_name = payload.get("event_name")
+            if not event_name:
+                res_event = conn.execute(
+                    text("SELECT name FROM events WHERE id = :event_id"),
+                    {"event_id": event_id}
+                ).fetchone()
+                if res_event:
+                    event_name = res_event[0]
+                    
+            if event_name:
+                try:
+                    from encore_cache.autocomplete import add_to_autocomplete
+                    add_to_autocomplete(self.redis_client, str(event_id), event_name)
+                    logger.info(f"Added event {event_id} to autocomplete index")
+                except Exception as e:
+                    logger.error(f"Failed to add event {event_id} to autocomplete: {e}")
+
             # Check if organizer is mega organizer
             res = conn.execute(
                 text("SELECT is_mega_organizer FROM users WHERE id = :org_id"),
@@ -72,4 +86,4 @@ class FeedWorker(KafkaEventConsumer):
                     pipeline.zadd(feed_key, {str(event_id): published_at_ts})
                 
                 pipeline.execute()
-                logger.info(f"Fanned out event {event_id} to {len(followers)} followers of {organizer_id}")
+                logger.info(f"Fanned out event {event_id} to {len(followers)} followers of {organizer_id}")  # noqa: E501

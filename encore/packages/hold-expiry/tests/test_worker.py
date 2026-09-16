@@ -27,9 +27,10 @@ def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
         # Create a mock for pg_try_advisory_xact_lock that always returns True
         dbapi_connection.create_function("pg_try_advisory_xact_lock", 1, lambda lock_id: True)
         # Mock NOW() -> CURRENT_TIMESTAMP for SQLite
-        dbapi_connection.create_function("NOW", 0, lambda: datetime.datetime.now(datetime.timezone.utc).isoformat())
+        dbapi_connection.create_function("NOW", 0, lambda: datetime.datetime.now(datetime.UTC).isoformat())  # noqa: E501
 
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine  # noqa: E402
+
 
 @pytest.fixture
 def engine() -> Engine:
@@ -101,10 +102,10 @@ def test_tick_no_expired_holds(engine: Engine, worker: HoldExpiryWorker) -> None
             )
         )
         # Insert a HELD seat expiring in the future
-        future = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=10)).isoformat()
+        future = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=10)).isoformat()
         conn.execute(
             text(
-                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, hold_expires_at) "
+                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, hold_expires_at) "  # noqa: E501
                 f"VALUES ('2', 'e1', 's2', 'HELD', 'u1', '{future}')"
             )
         )
@@ -121,10 +122,10 @@ def test_tick_no_expired_holds(engine: Engine, worker: HoldExpiryWorker) -> None
 def test_tick_expires_past_holds(engine: Engine, worker: HoldExpiryWorker) -> None:
     with engine.begin() as conn:
         # Insert a HELD seat that has expired
-        past = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=10)).isoformat()
+        past = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=10)).isoformat()
         conn.execute(
             text(
-                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, held_at, hold_expires_at) "
+                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, held_at, hold_expires_at) "  # noqa: E501
                 f"VALUES ('3', 'e1', 's3', 'HELD', 'u1', '2020-01-01', '{past}')"
             )
         )
@@ -134,7 +135,7 @@ def test_tick_expires_past_holds(engine: Engine, worker: HoldExpiryWorker) -> No
     
     # Verify row was reset
     with engine.begin() as conn:
-        row = conn.execute(text("SELECT status, held_by_user_id, held_at, hold_expires_at FROM inventory WHERE id = '3'")).fetchone()
+        row = conn.execute(text("SELECT status, held_by_user_id, held_at, hold_expires_at FROM inventory WHERE id = '3'")).fetchone()  # noqa: E501
         assert row is not None
         assert row[0] == "AVAILABLE"
         assert row[1] is None  # held_by_user_id
@@ -183,10 +184,10 @@ def test_tick_deletes_redis_keys_on_expiry(engine: Engine) -> None:
     )
 
     with engine.begin() as conn:
-        past = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=5)).isoformat()
+        past = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=5)).isoformat()
         conn.execute(
             text(
-                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, held_at, hold_expires_at) "
+                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, held_at, hold_expires_at) "  # noqa: E501
                 f"VALUES ('5', 'event-X', 'seat-Y', 'HELD', 'u2', '2020-01-01', '{past}')"
             )
         )
@@ -211,10 +212,10 @@ def test_tick_no_redis_keys_deleted_when_no_expiry(engine: Engine) -> None:
     )
 
     with engine.begin() as conn:
-        future = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=10)).isoformat()
+        future = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=10)).isoformat()
         conn.execute(
             text(
-                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, hold_expires_at) "
+                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, hold_expires_at) "  # noqa: E501
                 f"VALUES ('6', 'event-Z', 'seat-W', 'HELD', 'u3', '{future}')"
             )
         )
@@ -223,13 +224,13 @@ def test_tick_no_redis_keys_deleted_when_no_expiry(engine: Engine) -> None:
     assert count == 0
     assert fake_redis.deleted == []
 
-def test_tick_expires_pending_orders_tied_to_expired_holds(engine: Engine, worker: HoldExpiryWorker) -> None:
+def test_tick_expires_pending_orders_tied_to_expired_holds(engine: Engine, worker: HoldExpiryWorker) -> None:  # noqa: E501
     """When a hold expires, any PENDING orders for that event/user are marked EXPIRED."""
     with engine.begin() as conn:
-        past = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=5)).isoformat()
+        past = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=5)).isoformat()
         conn.execute(
             text(
-                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, hold_expires_at) "
+                "INSERT INTO inventory (id, event_id, seat_id, status, held_by_user_id, hold_expires_at) "  # noqa: E501
                 f"VALUES ('7', 'event-ORD', 'seat-ORD', 'HELD', 'u-ord', '{past}')"
             )
         )

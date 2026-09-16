@@ -1,5 +1,5 @@
 import contextlib
-from typing import Iterator
+from collections.abc import Iterator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker

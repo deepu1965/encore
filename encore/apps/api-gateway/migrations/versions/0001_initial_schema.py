@@ -17,16 +17,16 @@ the two drifting out of sync.
 
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0001"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -58,7 +58,7 @@ def upgrade() -> None:
     op.create_table(
         "events",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("venue_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("venues.id"), nullable=False),
+        sa.Column("venue_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("venues.id"), nullable=False),  # noqa: E501
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("starts_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column(
@@ -74,7 +74,7 @@ def upgrade() -> None:
     op.create_table(
         "seats",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("venue_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("venues.id"), nullable=False),
+        sa.Column("venue_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("venues.id"), nullable=False),  # noqa: E501
         sa.Column("section", sa.String(64), nullable=False),
         sa.Column("row_label", sa.String(16), nullable=False),
         sa.Column("seat_number", sa.String(16), nullable=False),
@@ -88,8 +88,8 @@ def upgrade() -> None:
     op.create_table(
         "inventory",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("event_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("events.id"), nullable=False),
-        sa.Column("seat_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("seats.id"), nullable=False),
+        sa.Column("event_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("events.id"), nullable=False),  # noqa: E501
+        sa.Column("seat_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("seats.id"), nullable=False),  # noqa: E501
         sa.Column(
             "status",
             sa.Enum("AVAILABLE", "HELD", "SOLD", name="inventory_status"),
@@ -97,7 +97,7 @@ def upgrade() -> None:
             server_default="AVAILABLE",
         ),
         sa.Column("price_cents", sa.Integer, nullable=False),
-        sa.Column("held_by_user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=True),
+        sa.Column("held_by_user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=True),  # noqa: E501
         sa.Column("held_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "updated_at",
@@ -114,8 +114,8 @@ def upgrade() -> None:
     op.create_table(
         "orders",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("event_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("events.id"), nullable=False),
+        sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=False),  # noqa: E501
+        sa.Column("event_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("events.id"), nullable=False),  # noqa: E501
         sa.Column(
             "status",
             sa.Enum("PENDING", "COMPLETED", "FAILED", name="order_status"),
@@ -134,13 +134,13 @@ def upgrade() -> None:
     op.create_table(
         "tickets",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("order_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("orders.id"), nullable=False),
+        sa.Column("order_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("orders.id"), nullable=False),  # noqa: E501
         sa.Column(
-            "inventory_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("inventory.id"), nullable=False
+            "inventory_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("inventory.id"), nullable=False  # noqa: E501
         ),
         sa.Column("ticket_code", sa.String(32), nullable=False),
         sa.Column(
-            "status", sa.Enum("ISSUED", name="ticket_status"), nullable=False, server_default="ISSUED"
+            "status", sa.Enum("ISSUED", name="ticket_status"), nullable=False, server_default="ISSUED"  # noqa: E501
         ),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("inventory_id", name="uq_tickets_inventory_id"),

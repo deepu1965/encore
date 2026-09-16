@@ -1,6 +1,6 @@
-import os
 from encore_gateway.db import SessionWrite, shard_manager
-from encore_gateway.models import Event, User, Seat
+from encore_gateway.models import Event, Seat, User
+
 
 def generate():
     db = SessionWrite()

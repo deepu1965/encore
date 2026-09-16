@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-import time
-import random
-import logging
 import argparse
+import logging
+import random
 import sys
+import time
+
 import docker
-from docker.errors import NotFound, APIError
+from docker.errors import APIError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ class ChaosMonkey:
         self.mode = mode
         try:
             self.client = docker.from_env()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error(f"Failed to connect to Docker daemon: {e}")
             sys.exit(1)
 

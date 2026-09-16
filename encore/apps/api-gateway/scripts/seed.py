@@ -18,10 +18,19 @@ GET /orders/{id}.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from encore_gateway.db import SessionWrite, shard_manager
-from encore_gateway.models import Event, EventStatus, Inventory, InventoryStatus, Seat, User, UserRole, Venue
+from encore_gateway.models import (
+    Event,
+    EventStatus,
+    Inventory,
+    InventoryStatus,
+    Seat,
+    User,
+    UserRole,
+    Venue,
+)
 
 DEMO_VENUE_NAME = "Encore Arena"
 
@@ -35,21 +44,34 @@ def seed() -> None:
             return
 
         user = User(
-            id=uuid.uuid4(),
+            id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
             email="demo.buyer@example.com",
             display_name="Demo Buyer",
             role=UserRole.BUYER,
         )
         db.add(user)
 
-        venue = Venue(id=uuid.uuid4(), name=DEMO_VENUE_NAME, city="Hyderabad", timezone="Asia/Kolkata")
+        admin = User(
+            id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
+            email="admin@example.com",
+            display_name="Admin User",
+            role=UserRole.ADMIN,
+        )
+        db.add(admin)
+
+        venue = Venue(
+            id=uuid.uuid4(),
+            name=DEMO_VENUE_NAME,
+            city="Hyderabad",
+            timezone="Asia/Kolkata",
+        )
         db.add(venue)
 
         event = Event(
             id=uuid.uuid4(),
             venue_id=venue.id,
             name="Encore Launch Night",
-            starts_at=datetime.now(timezone.utc) + timedelta(days=30),
+            starts_at=datetime.now(UTC) + timedelta(days=30),
             status=EventStatus.ON_SALE,
         )
         db.add(event)
@@ -83,7 +105,7 @@ def seed() -> None:
         shard_db = shard_manager.get_session(event.id)
         try:
             # Replicate Venue and Event to shard
-            shard_venue = Venue(id=venue.id, name=venue.name, city=venue.city, timezone=venue.timezone)
+            shard_venue = Venue(id=venue.id, name=venue.name, city=venue.city, timezone=venue.timezone)  # noqa: E501
             shard_db.add(shard_venue)
             shard_event = Event(
                 id=event.id, venue_id=venue.id, name=event.name,

@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import uuid
 
+from encore_cache import CacheClient, cache_aside, event_seats_key
+from encore_cache.helpers import TTL_SEATS_SECONDS
 from encore_common import success_envelope
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from encore_cache import CacheClient, cache_aside, event_seats_key
-from encore_cache.helpers import TTL_SEATS_SECONDS
 
 from ..cache import get_cache
-from ..db import get_db, get_db_read, get_shard_db
+from ..db import get_db_read
 from ..models import Event, Inventory, Seat, Venue
 from ..pagination import decode_cursor, encode_cursor
 from ..schemas import EventListOut, EventOut, SeatListOut, SeatOut
@@ -78,7 +78,7 @@ def list_event_seats(
     request: Request,
     cache: CacheClient = Depends(get_cache),
 ) -> dict:
-    # Need to manually get the shard db session because Depends doesn't easily take arguments in FastAPI without a closure
+    # Need to manually get the shard db session because Depends doesn't easily take arguments in FastAPI without a closure  # noqa: E501
     # We'll use a nested function to get it or just get it directly.
     def get_shard_session():
         from ..db import shard_manager
@@ -87,7 +87,7 @@ def list_event_seats(
     def fallback() -> dict | None:
         db = get_shard_session()
         try:
-            # Note: We must also check if the event exists on the primary, but since we replicate Event to shards, we can check it there.
+            # Note: We must also check if the event exists on the primary, but since we replicate Event to shards, we can check it there.  # noqa: E501
             event = db.get(Event, event_id)
             if event is None:
                 return None

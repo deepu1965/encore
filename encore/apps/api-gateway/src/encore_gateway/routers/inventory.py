@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..cache import get_cache
-from ..db import get_db, get_db_read
+from ..db import get_db_read
 from ..models import Inventory
 
 router = APIRouter(prefix="/api/v1/inventory", tags=["inventory"])

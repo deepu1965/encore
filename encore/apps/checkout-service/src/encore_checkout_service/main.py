@@ -1,10 +1,10 @@
 import contextlib
 import logging
 
+from encore_common import setup_observability
+from encore_kafka_client import KafkaEventProducer
 from fastapi import FastAPI
 from sqlalchemy import create_engine
-from encore_kafka_client import KafkaEventProducer
-from encore_common import setup_observability
 
 from .config import settings
 from .consumer import CheckoutOrchestrator

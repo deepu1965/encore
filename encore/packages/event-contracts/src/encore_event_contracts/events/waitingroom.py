@@ -32,7 +32,7 @@ class WaitingRoomJoinedPayload:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "WaitingRoomJoinedPayload":
+    def from_dict(cls, data: dict[str, Any]) -> WaitingRoomJoinedPayload:
         return cls(**data)
 
 
@@ -52,5 +52,5 @@ class WaitingRoomAdmittedPayload:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "WaitingRoomAdmittedPayload":
+    def from_dict(cls, data: dict[str, Any]) -> WaitingRoomAdmittedPayload:
         return cls(**data)

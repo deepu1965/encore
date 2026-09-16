@@ -1,18 +1,10 @@
-import os
+import logging
+
 from sqlalchemy import create_engine
+
+import encore_gateway.models  # noqa: F401 - populates Base.metadata
 from encore_gateway.config import settings
 from encore_gateway.db import Base
-from encore_gateway.models import (
-    Event,
-    IdempotencyRecord,
-    Inventory,
-    Order,
-    Seat,
-    Ticket,
-    User,
-    Venue,
-)
-import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

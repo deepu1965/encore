@@ -28,7 +28,7 @@ FIELDS:
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any
 
 
@@ -56,7 +56,7 @@ class EventEnvelope:
         return json.dumps(self.to_dict(), separators=(",", ":"))
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "EventEnvelope":
+    def from_dict(cls, data: dict[str, Any]) -> EventEnvelope:
         """Deserialise from a dict (e.g. after JSON parsing a Kafka message)."""
         return cls(
             event_id=data["event_id"],
@@ -70,6 +70,6 @@ class EventEnvelope:
         )
 
     @classmethod
-    def from_json(cls, raw: str | bytes) -> "EventEnvelope":
+    def from_json(cls, raw: str | bytes) -> EventEnvelope:
         """Deserialise from a JSON bytes/string (Kafka message value)."""
         return cls.from_dict(json.loads(raw))

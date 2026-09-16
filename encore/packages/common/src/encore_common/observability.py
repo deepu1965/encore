@@ -1,20 +1,21 @@
-import os
 import logging
-from fastapi import FastAPI
-from pythonjsonlogger import jsonlogger
+import os
 
-# Metrics
-from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import Counter, Histogram
+from fastapi import FastAPI
 
 # Tracing
 from opentelemetry import trace
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from prometheus_client import Counter
+
+# Metrics
+from prometheus_fastapi_instrumentator import Instrumentator
+from pythonjsonlogger import jsonlogger
 
 # Custom Business Metrics
 RESALE_MATCHES_TOTAL = Counter("resale_matches_total", "Total successful resale matches")

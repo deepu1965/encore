@@ -1,12 +1,15 @@
 import logging
+from typing import Any
+
 import requests
-from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-WALLET_SERVICE_URL = "http://wallet-service:8000/api/v1/wallet"
+import os
 
-def handle_compensation(event: Dict[str, Any], producer):
+WALLET_SERVICE_URL = os.environ.get("WALLET_SERVICE_URL", "http://wallet-service:8000/api/v1/wallet")
+
+def handle_compensation(event: dict[str, Any], producer):
     """
     Rollback logic if settlement fails.
     Refunds the buyer and emits a failure event.
@@ -33,7 +36,7 @@ def handle_compensation(event: Dict[str, Any], producer):
         else:
             logger.error(f"Compensation: Failed to refund escrow for trade {trade_id}: {resp.text}")
             
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(f"Compensation error for trade {trade_id}: {e}")
         
     finally:

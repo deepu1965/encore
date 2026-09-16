@@ -1,7 +1,8 @@
 """Tests for Kafka client helpers."""
 
-from encore_kafka_client import build_envelope
 from encore_id_generator import SnowflakeIDGenerator
+
+from encore_kafka_client import build_envelope
 
 
 def test_build_envelope_populates_required_fields():

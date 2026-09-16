@@ -1,18 +1,20 @@
 import logging
-import uuid
+from typing import Any
+
 import requests
-from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-WALLET_SERVICE_URL = "http://wallet-service:8000/api/v1/wallet"
-API_GATEWAY_URL = "http://api-gateway:8000/internal"
+import os
+
+WALLET_SERVICE_URL = os.environ.get("WALLET_SERVICE_URL", "http://wallet-service:8000/api/v1/wallet")
+API_GATEWAY_URL = os.environ.get("API_GATEWAY_URL", "http://api-gateway:8000/internal")
 
 class ResaleSettlementOrchestrator:
     def __init__(self, kafka_producer):
         self.producer = kafka_producer
 
-    def handle_trade_matched(self, event: Dict[str, Any]):
+    def handle_trade_matched(self, event: dict[str, Any]):
         """
         Saga execution for resale settlement.
         Expected event format:
@@ -73,7 +75,7 @@ class ResaleSettlementOrchestrator:
             )
             logger.info(f"Saga completed successfully for trade {trade_id}")
             
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error(f"Saga failed for trade {trade_id}: {e}")
             from .compensations import handle_compensation
             handle_compensation(event, self.producer)

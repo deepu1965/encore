@@ -1,15 +1,21 @@
+from datetime import datetime, timezone
+
+from encore_event_contracts.events.resale import (
+    RESALE_LISTING_CREATED_EVENT_TYPE,
+    RESALE_LISTING_CREATED_TOPIC,
+    RESALE_LISTING_CREATED_VERSION,
+    RESALE_ORDER_CREATED_EVENT_TYPE,
+    RESALE_ORDER_CREATED_TOPIC,
+    RESALE_ORDER_CREATED_VERSION,
+    ResaleListingCreatedPayload,
+    ResaleOrderCreatedPayload,
+)
+from encore_id_generator import SnowflakeIDGenerator
+from encore_kafka_client import build_envelope
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+
 from ..schemas import ListingCreate, OrderCreate
-from ..models import ResaleListing, ResaleOrder
-from encore_event_contracts.events.resale import (
-    RESALE_LISTING_CREATED_EVENT_TYPE, RESALE_LISTING_CREATED_TOPIC, RESALE_LISTING_CREATED_VERSION,
-    RESALE_ORDER_CREATED_EVENT_TYPE, RESALE_ORDER_CREATED_TOPIC, RESALE_ORDER_CREATED_VERSION,
-    ResaleListingCreatedPayload, ResaleOrderCreatedPayload
-)
-from encore_kafka_client import build_envelope
-from encore_id_generator import SnowflakeIDGenerator
 
 router = APIRouter(prefix="/api/v1/resale", tags=["resale"])
 _id_gen = SnowflakeIDGenerator()
@@ -18,7 +24,7 @@ def get_db():
     yield None
 
 @router.post("/listings", status_code=201)
-def create_listing(payload: ListingCreate, request: Request, db: Session = Depends(get_db)):
+def create_listing(payload: ListingCreate, request: Request, db: Session = Depends(get_db)):  # noqa: B008
     listing_id = _id_gen.next_id().as_uuid()
     producer = getattr(request.app.state, "kafka_producer", None)
     if producer:
@@ -42,7 +48,7 @@ def create_listing(payload: ListingCreate, request: Request, db: Session = Depen
     return {"status": "success", "listing_id": str(listing_id)}
 
 @router.post("/orders", status_code=201)
-def create_order(payload: OrderCreate, request: Request, db: Session = Depends(get_db)):
+def create_order(payload: OrderCreate, request: Request, db: Session = Depends(get_db)):  # noqa: B008
     order_id = _id_gen.next_id().as_uuid()
     producer = getattr(request.app.state, "kafka_producer", None)
     if producer:

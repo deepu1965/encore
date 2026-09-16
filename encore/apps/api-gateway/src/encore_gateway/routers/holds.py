@@ -16,7 +16,7 @@ POST /holds is explicitly listed as a required-idempotency endpoint.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from encore_cache import CacheClient, event_seats_key, hold_key, invalidate, inventory_status_key
@@ -41,7 +41,6 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..cache import get_cache
 from ..config import settings
-from ..db import get_db
 from ..domain.inventory_state import InventoryStatus as DomainInventoryStatus
 from ..domain.inventory_state import can_hold, can_release
 from ..idempotency import get_idempotent_response, save_idempotent_response
@@ -144,7 +143,7 @@ def create_hold(
 
     existing = get_idempotent_response(db, idempotency_key, ENDPOINT_NAME)
     if existing is not None:
-        return JSONResponse(status_code=existing.status_code, content=json.loads(existing.response_json))
+        return JSONResponse(status_code=existing.status_code, content=json.loads(existing.response_json))  # noqa: E501
 
     # --- Week 8: Redis SETNX fast-path guard ---
     # Attempt to acquire a per-seat lock BEFORE the Postgres SELECT FOR UPDATE.
@@ -183,7 +182,7 @@ def create_hold(
         if _acquired_redis_lock and _redis is not None:
             _redis.delete(_redis_lock_key)  # compensate: release the lock we took
         raise HTTPException(
-            status_code=404, detail=error_envelope("SEAT_NOT_FOUND", "No such seat for this event.", request_id)
+            status_code=404, detail=error_envelope("SEAT_NOT_FOUND", "No such seat for this event.", request_id)  # noqa: E501
         )
 
     # --- Week 8: If domain check fails, release the Redis lock (compensating action) ---
@@ -196,7 +195,7 @@ def create_hold(
         db.commit()
         return JSONResponse(status_code=409, content=body)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires_at = now + timedelta(minutes=settings.hold_ttl_minutes)
 
     # Week 7: Direct mutation within the locked transaction
@@ -326,7 +325,7 @@ def release_hold(
     # 5. Emit Kafka event
     producer = getattr(request.app.state, "kafka_producer", None)
     if producer is not None:
-        now_str = datetime.now(timezone.utc).isoformat()
+        now_str = datetime.now(UTC).isoformat()
         envelope = build_envelope(
             event_type=SEAT_RELEASED_EVENT_TYPE,
             event_version=SEAT_RELEASED_VERSION,
@@ -347,7 +346,7 @@ def release_hold(
     try:
         return JSONResponse(
             status_code=200,
-            content=success_envelope({"inventory_id": str(inventory_id), "released": True}, request_id)
+            content=success_envelope({"inventory_id": str(inventory_id), "released": True}, request_id)  # noqa: E501
         )
     finally:
         if db is not None:

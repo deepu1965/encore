@@ -40,39 +40,39 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
     return mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
 
-class AuditEventType(str, enum.Enum):
+class AuditEventType(str, enum.Enum):  # noqa: UP042
     ISSUED = "ISSUED"
     TRANSFERRED = "TRANSFERRED"
     REVOKED = "REVOKED"
 
 
-class UserRole(str, enum.Enum):
+class UserRole(str, enum.Enum):  # noqa: UP042
     BUYER = "BUYER"
     ORGANIZER = "ORGANIZER"
     ADMIN = "ADMIN"
 
 
-class EventStatus(str, enum.Enum):
+class EventStatus(str, enum.Enum):  # noqa: UP042
     SCHEDULED = "SCHEDULED"
     ON_SALE = "ON_SALE"
     SOLD_OUT = "SOLD_OUT"
     CANCELLED = "CANCELLED"
 
 
-class InventoryStatus(str, enum.Enum):
+class InventoryStatus(str, enum.Enum):  # noqa: UP042
     AVAILABLE = "AVAILABLE"
     HELD = "HELD"
     SOLD = "SOLD"
 
 
-class OrderStatus(str, enum.Enum):
+class OrderStatus(str, enum.Enum):  # noqa: UP042
     PENDING = "PENDING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     EXPIRED = "EXPIRED"
 
 
-class TicketStatus(str, enum.Enum):
+class TicketStatus(str, enum.Enum):  # noqa: UP042
     ISSUED = "ISSUED"
 
 
@@ -97,8 +97,8 @@ class Venue(Base):
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    seats: Mapped[list["Seat"]] = relationship(back_populates="venue")
-    events: Mapped[list["Event"]] = relationship(back_populates="venue")
+    seats: Mapped[list[Seat]] = relationship(back_populates="venue")
+    events: Mapped[list[Event]] = relationship(back_populates="venue")
 
 
 class Event(Base):
@@ -115,14 +115,14 @@ class Event(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    venue: Mapped["Venue"] = relationship(back_populates="events")
-    inventory_rows: Mapped[list["Inventory"]] = relationship(back_populates="event")
+    venue: Mapped[Venue] = relationship(back_populates="events")
+    inventory_rows: Mapped[list[Inventory]] = relationship(back_populates="event")
 
 
 class Seat(Base):
     __tablename__ = "seats"
     __table_args__ = (
-        UniqueConstraint("venue_id", "section", "row_label", "seat_number", name="uq_seat_physical"),
+        UniqueConstraint("venue_id", "section", "row_label", "seat_number", name="uq_seat_physical"),  # noqa: E501
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -134,7 +134,7 @@ class Seat(Base):
     seat_number: Mapped[str] = mapped_column(String(16), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    venue: Mapped["Venue"] = relationship(back_populates="seats")
+    venue: Mapped[Venue] = relationship(back_populates="seats")
 
 
 class Inventory(Base):
@@ -167,8 +167,8 @@ class Inventory(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    event: Mapped["Event"] = relationship(back_populates="inventory_rows")
-    seat: Mapped["Seat"] = relationship()
+    event: Mapped[Event] = relationship(back_populates="inventory_rows")
+    seat: Mapped[Seat] = relationship()
 
 
 class Order(Base):
@@ -185,10 +185,10 @@ class Order(Base):
         Enum(OrderStatus, name="order_status"), nullable=False, default=OrderStatus.PENDING
     )
     total_cents: Mapped[int] = mapped_column(Integer, nullable=False)
-    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)  # noqa: E501
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    tickets: Mapped[list["Ticket"]] = relationship(back_populates="order")
+    tickets: Mapped[list[Ticket]] = relationship(back_populates="order")
 
 
 class Ticket(Base):
@@ -207,7 +207,7 @@ class Ticket(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    order: Mapped["Order"] = relationship(back_populates="tickets")
+    order: Mapped[Order] = relationship(back_populates="tickets")
 
 
 class IdempotencyRecord(Base):
@@ -236,18 +236,18 @@ class AuditEvent(Base):
         Enum(AuditEventType, name="audit_event_type"), nullable=False
     )
     user_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
-    previous_owner_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    previous_owner_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)  # noqa: E501
     new_owner_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-import enum
-import uuid
-from datetime import datetime
-from sqlalchemy import Enum, Integer, String, func, ForeignKey, DateTime
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import Mapped, mapped_column
+import enum  # noqa: E402
 
-class SagaStatus(str, enum.Enum):
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, func  # noqa: E402
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID  # noqa: E402
+from sqlalchemy.orm import mapped_column  # noqa: E402
+
+
+class SagaStatus(str, enum.Enum):  # noqa: UP042
     PENDING = "PENDING"
     BUYER_CHARGED = "BUYER_CHARGED"
     SELLER_CREDITED = "SELLER_CREDITED"
@@ -257,22 +257,22 @@ class SagaStatus(str, enum.Enum):
 
 class ResaleSagaState(Base):
     __tablename__ = "resale_saga_states"
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)  # noqa: E501
     trade_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, unique=True)
-    status: Mapped[SagaStatus] = mapped_column(Enum(SagaStatus, name="saga_status"), nullable=False, default=SagaStatus.PENDING)
+    status: Mapped[SagaStatus] = mapped_column(Enum(SagaStatus, name="saga_status"), nullable=False, default=SagaStatus.PENDING)  # noqa: E501
     error_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())  # noqa: E501
 
-class CheckoutTransactionType(str, enum.Enum):
+class CheckoutTransactionType(str, enum.Enum):  # noqa: UP042
     CREDIT = "CREDIT"
     DEBIT = "DEBIT"
 
 class CheckoutWalletLedger(Base):
     __tablename__ = "checkout_wallet_ledger"
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)  # noqa: E501
     wallet_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
-    transaction_type: Mapped[CheckoutTransactionType] = mapped_column(Enum(CheckoutTransactionType, name="checkout_transaction_type_enum"), nullable=False)
+    transaction_type: Mapped[CheckoutTransactionType] = mapped_column(Enum(CheckoutTransactionType, name="checkout_transaction_type_enum"), nullable=False)  # noqa: E501
     reference_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

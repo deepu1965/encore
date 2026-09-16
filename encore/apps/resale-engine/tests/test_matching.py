@@ -1,81 +1,203 @@
-import pytest
-from unittest.mock import MagicMock
 import uuid
-from datetime import datetime, timezone
-from encore_resale_engine.models import ResaleListing, ResaleOrder, ListingStatus
+from datetime import datetime, timedelta, timezone
+
+import pytest
 from encore_resale_engine.matching import match_orders
+from encore_resale_engine.models import (
+    Base,
+    ListingStatus,
+    ResaleListing,
+    ResaleOrder,
+)
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-def test_match_orders_no_match():
-    # Setup mock DB session
-    db_mock = MagicMock()
-    
-    # Return a listing but no matching order (bid too low)
-    mock_listing = ResaleListing(
-        id=uuid.uuid4(),
-        event_id=uuid.uuid4(),
-        ask_price_cents=5000,
-        status=ListingStatus.ACTIVE,
-        created_at=datetime.now(timezone.utc)
+
+@pytest.fixture(name="db")
+def setup_db():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
-    
-    # DB execute mock setup
-    # 1st call: listing query -> returns mock_listing
-    # 2nd call: order query -> returns None
-    # 3rd call: loop breaks
-    
-    mock_result_1 = MagicMock()
-    mock_result_1.scalar_one_or_none.return_value = mock_listing
-    
-    mock_result_2 = MagicMock()
-    mock_result_2.scalar_one_or_none.return_value = None
-    
-    db_mock.execute.side_effect = [mock_result_1, mock_result_2, mock_result_1, mock_result_2]
+    Base.metadata.create_all(bind=engine)
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+        engine.dispose()
 
-    trades = match_orders(str(uuid.uuid4()), db_mock)
-    
-    assert len(trades) == 0
-    assert mock_listing.status == ListingStatus.ACTIVE
-
-def test_match_orders_successful_match():
-    db_mock = MagicMock()
+def test_lowest_ask_matches_highest_bid(db):
+    """Given ask=100, bid=150 -> match at ask price 100."""
     event_id = uuid.uuid4()
+    seller_id = uuid.uuid4()
+    buyer_id = uuid.uuid4()
+    ticket_id = uuid.uuid4()
     
-    mock_listing = ResaleListing(
-        id=uuid.uuid4(),
+    listing = ResaleListing(
         event_id=event_id,
-        ask_price_cents=4500,
-        status=ListingStatus.ACTIVE,
-        created_at=datetime.now(timezone.utc)
+        ticket_id=ticket_id,
+        seller_id=seller_id,
+        ask_price_cents=100,
+        status=ListingStatus.ACTIVE
     )
+    db.add(listing)
     
-    mock_order = ResaleOrder(
-        id=uuid.uuid4(),
+    order = ResaleOrder(
         event_id=event_id,
-        bid_price_cents=5000,
-        status=ListingStatus.ACTIVE,
-        created_at=datetime.now(timezone.utc)
+        buyer_id=buyer_id,
+        bid_price_cents=150,
+        status=ListingStatus.ACTIVE
     )
-    
-    # 1st loop: listing found, order found -> match -> trade
-    # 2nd loop: listing None -> break
-    
-    mock_result_list = MagicMock()
-    mock_result_list.scalar_one_or_none.side_effect = [mock_listing, None]
-    
-    mock_result_order = MagicMock()
-    mock_result_order.scalar_one_or_none.return_value = mock_order
-    
-    db_mock.execute.side_effect = [mock_result_list, mock_result_order, mock_result_list]
-    
-    trades = match_orders(str(event_id), db_mock)
+    db.add(order)
+    db.commit()
+
+    trades = match_orders(str(event_id), db)
     
     assert len(trades) == 1
-    assert trades[0].price_cents == 4500
-    assert trades[0].listing_id == mock_listing.id
-    assert trades[0].order_id == mock_order.id
+    assert trades[0].price_cents == 100
+    assert trades[0].listing_id == listing.id
+    assert trades[0].order_id == order.id
     
-    assert mock_listing.status == ListingStatus.MATCHED
-    assert mock_order.status == ListingStatus.MATCHED
+    # Assert statuses changed
+    assert listing.status == ListingStatus.MATCHED
+    assert order.status == ListingStatus.MATCHED
+
+def test_no_match_when_bid_below_ask(db):
+    """Given ask=200, bid=100 -> no match."""
+    event_id = uuid.uuid4()
     
-    assert db_mock.add.called
-    assert db_mock.flush.called
+    listing = ResaleListing(
+        event_id=event_id,
+        ticket_id=uuid.uuid4(),
+        seller_id=uuid.uuid4(),
+        ask_price_cents=200,
+        status=ListingStatus.ACTIVE
+    )
+    db.add(listing)
+    
+    order = ResaleOrder(
+        event_id=event_id,
+        buyer_id=uuid.uuid4(),
+        bid_price_cents=100,
+        status=ListingStatus.ACTIVE
+    )
+    db.add(order)
+    db.commit()
+
+    trades = match_orders(str(event_id), db)
+    
+    assert len(trades) == 0
+    assert listing.status == ListingStatus.ACTIVE
+    assert order.status == ListingStatus.ACTIVE
+
+def test_fifo_tiebreak_same_price(db):
+    """Two asks at same price -> earlier created_at wins."""
+    event_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    
+    listing1 = ResaleListing(
+        event_id=event_id,
+        ticket_id=uuid.uuid4(),
+        seller_id=uuid.uuid4(),
+        ask_price_cents=100,
+        status=ListingStatus.ACTIVE,
+        created_at=now - timedelta(minutes=5)
+    )
+    db.add(listing1)
+    
+    listing2 = ResaleListing(
+        event_id=event_id,
+        ticket_id=uuid.uuid4(),
+        seller_id=uuid.uuid4(),
+        ask_price_cents=100,
+        status=ListingStatus.ACTIVE,
+        created_at=now - timedelta(minutes=10) # Older
+    )
+    db.add(listing2)
+    
+    order = ResaleOrder(
+        event_id=event_id,
+        buyer_id=uuid.uuid4(),
+        bid_price_cents=100,
+        status=ListingStatus.ACTIVE
+    )
+    db.add(order)
+    db.commit()
+
+    trades = match_orders(str(event_id), db)
+    
+    assert len(trades) == 1
+    # listing2 is older, should match
+    assert trades[0].listing_id == listing2.id
+    
+    assert listing1.status == ListingStatus.ACTIVE
+    assert listing2.status == ListingStatus.MATCHED
+    assert order.status == ListingStatus.MATCHED
+
+def test_multiple_sequential_matches(db):
+    """3 ask + 3 bid pairs all at crossing prices -> 3 trades, in price-time order."""
+    event_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    
+    # Asks: 100, 150, 200
+    listing1 = ResaleListing(event_id=event_id, ticket_id=uuid.uuid4(), seller_id=uuid.uuid4(), ask_price_cents=200, status=ListingStatus.ACTIVE, created_at=now)
+    listing2 = ResaleListing(event_id=event_id, ticket_id=uuid.uuid4(), seller_id=uuid.uuid4(), ask_price_cents=150, status=ListingStatus.ACTIVE, created_at=now)
+    listing3 = ResaleListing(event_id=event_id, ticket_id=uuid.uuid4(), seller_id=uuid.uuid4(), ask_price_cents=100, status=ListingStatus.ACTIVE, created_at=now)
+    db.add_all([listing1, listing2, listing3])
+    
+    # Bids: 200, 150, 250 -> 250, 200, 200 to cross all
+    order1 = ResaleOrder(event_id=event_id, buyer_id=uuid.uuid4(), bid_price_cents=250, status=ListingStatus.ACTIVE, created_at=now)
+    order2 = ResaleOrder(event_id=event_id, buyer_id=uuid.uuid4(), bid_price_cents=200, status=ListingStatus.ACTIVE, created_at=now)
+    order3 = ResaleOrder(event_id=event_id, buyer_id=uuid.uuid4(), bid_price_cents=200, status=ListingStatus.ACTIVE, created_at=now)
+    db.add_all([order1, order2, order3])
+    
+    db.commit()
+
+    trades = match_orders(str(event_id), db)
+    
+    assert len(trades) == 3
+    
+    # Match 1: Lowest ask (100) matches Highest bid (250)
+    assert trades[0].listing_id == listing3.id
+    assert trades[0].order_id == order1.id
+    assert trades[0].price_cents == 100
+    
+    # Match 2: Next lowest ask (150) matches Next highest bid (200)
+    assert trades[1].listing_id == listing2.id
+    assert trades[1].price_cents == 150
+    
+    # Match 3: Next lowest ask (200) matches Next highest bid (200)
+    assert trades[2].listing_id == listing1.id
+    assert trades[2].price_cents == 200
+
+
+def test_no_invalid_match_invariant(db):
+    """After N random orders, assert every trade has trade.price == listing.ask_price_cents."""
+    event_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    
+    # Let's create a bunch of random valid matches
+    listing1 = ResaleListing(event_id=event_id, ticket_id=uuid.uuid4(), seller_id=uuid.uuid4(), ask_price_cents=100, status=ListingStatus.ACTIVE, created_at=now)
+    listing2 = ResaleListing(event_id=event_id, ticket_id=uuid.uuid4(), seller_id=uuid.uuid4(), ask_price_cents=150, status=ListingStatus.ACTIVE, created_at=now)
+    db.add_all([listing1, listing2])
+    
+    order1 = ResaleOrder(event_id=event_id, buyer_id=uuid.uuid4(), bid_price_cents=200, status=ListingStatus.ACTIVE, created_at=now)
+    order2 = ResaleOrder(event_id=event_id, buyer_id=uuid.uuid4(), bid_price_cents=200, status=ListingStatus.ACTIVE, created_at=now)
+    db.add_all([order1, order2])
+    db.commit()
+
+    trades = match_orders(str(event_id), db)
+    assert len(trades) == 2
+    
+    for trade in trades:
+        # trade price must be exactly the listing's ask price
+        listing = db.get(ResaleListing, trade.listing_id)
+        assert trade.price_cents == listing.ask_price_cents
+        
+        # bid price must be >= ask price
+        order = db.get(ResaleOrder, trade.order_id)
+        assert order.bid_price_cents >= listing.ask_price_cents

@@ -1,9 +1,9 @@
 """Tests for KafkaEventProducer."""
 
-import json
 from unittest.mock import MagicMock, patch
 
 from encore_event_contracts import EventEnvelope
+
 from encore_kafka_client import KafkaEventProducer
 
 _DUMMY_ENVELOPE = EventEnvelope(
@@ -33,6 +33,7 @@ def test_publish_success(mock_kafka_class):
         "test.topic",
         key="key_123",
         value=_DUMMY_ENVELOPE.to_json(),
+        headers=[],
     )
     # Callbacks attached
     mock_future.add_callback.assert_called_once()

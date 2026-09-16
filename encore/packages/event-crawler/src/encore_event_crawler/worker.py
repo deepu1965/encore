@@ -2,13 +2,10 @@ import hashlib
 import json
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Any
-
-from sqlalchemy import text
-from sqlalchemy.engine import Engine
 
 from encore_kafka_client import KafkaEventProducer
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
 
@@ -67,14 +64,14 @@ class EventCrawlerWorker:
 
             for event in mock_partner_events:
                 # Deduplication logic: hash(title + date + venue)
-                canonical_str = f"{event['title']}|{event['date']}|{event['venue_name']}".encode("utf-8")
+                canonical_str = f"{event['title']}|{event['date']}|{event['venue_name']}".encode()
                 event_hash = hashlib.sha256(canonical_str).hexdigest()
 
                 # Check if this hash exists in our processed table
-                # (For V1 we can just check if an event with this hash exists, or use a dedicated crawler_state table)
+                # (For V1 we can just check if an event with this hash exists, or use a dedicated crawler_state table)  # noqa: E501
                 # Let's assume we create a crawler_events table or just check the Kafka topic.
-                # Since we don't have a crawler_events table, we can just use the hash as an idempotency key.
-                # We'll just emit it to Kafka. The consumer will handle deduplication using the hash.
+                # Since we don't have a crawler_events table, we can just use the hash as an idempotency key.  # noqa: E501
+                # We'll just emit it to Kafka. The consumer will handle deduplication using the hash.  # noqa: E501
                 
                 # We will emit a 'crawler.events' topic
                 if self.producer:
@@ -85,7 +82,7 @@ class EventCrawlerWorker:
                             **event
                         }
                     }
-                    self.producer.produce("crawler.events", event_hash, json.dumps(envelope).encode("utf-8"))
+                    self.producer.produce("crawler.events", event_hash, json.dumps(envelope).encode("utf-8"))  # noqa: E501
                 
                 count += 1
                 

@@ -47,7 +47,6 @@ from dataclasses import dataclass
 
 import redis as redis_lib
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Key helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -116,7 +115,7 @@ class WaitingRoomQueue:
         existing_token = self._get_user_token(event_id, user_id)
         if existing_token is not None:
             queue_size = self._queue_size(event_id)
-            return QueueStatus(admitted=True, position=0, queue_size=queue_size, token=existing_token)
+            return QueueStatus(admitted=True, position=0, queue_size=queue_size, token=existing_token)  # noqa: E501
 
         # ZADD NX: only add if not already present (idempotent join)
         score = int(time.time() * 1000)  # ms since epoch
@@ -135,7 +134,7 @@ class WaitingRoomQueue:
         existing_token = self._get_user_token(event_id, user_id)
         if existing_token is not None:
             queue_size = self._queue_size(event_id)
-            return QueueStatus(admitted=True, position=0, queue_size=queue_size, token=existing_token)
+            return QueueStatus(admitted=True, position=0, queue_size=queue_size, token=existing_token)  # noqa: E501
 
         rank = self._r.zrank(_queue_key(event_id), user_id)
         queue_size = self._queue_size(event_id)

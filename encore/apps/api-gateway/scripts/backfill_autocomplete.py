@@ -1,5 +1,4 @@
 import sys
-import os
 from pathlib import Path
 
 # Add the src dir to path
@@ -11,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from encore_gateway.db import get_engine
 from encore_gateway.models import Event
+
 
 def main():
     engine = get_engine()

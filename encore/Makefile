@@ -74,6 +74,15 @@ test-api: ## Run api-gateway's test suite
 lint-api: ## Lint api-gateway
 	cd apps/api-gateway && ruff check .
 
+test-unit:
+	pytest tests/unit
+
+test-integration:
+	pytest tests/integration
+
+test-e2e:
+	pytest tests/e2e
+
 test-event-contracts: ## Run packages/event-contracts's test suite
 	cd packages/event-contracts && pip install -e ".[dev]" -q && pytest -v
 

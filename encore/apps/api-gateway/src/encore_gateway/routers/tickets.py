@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Ticket, TicketOwnershipHistory, AuditEvent, AuditEventType
+from ..models import AuditEvent, AuditEventType, Ticket, TicketOwnershipHistory
 
 router = APIRouter(prefix="/internal/tickets", tags=["tickets-internal"])
 

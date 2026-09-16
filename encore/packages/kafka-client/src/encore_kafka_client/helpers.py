@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from encore_event_contracts import EventEnvelope
 from encore_id_generator import SnowflakeIDGenerator
@@ -18,7 +18,7 @@ def build_envelope(
     id_generator: SnowflakeIDGenerator,
 ) -> EventEnvelope:
     """Construct a fully-populated EventEnvelope from parts."""
-    now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    now = datetime.now(UTC).isoformat(timespec="milliseconds")
     # Replace +00:00 with Z for stricter ISO 8601 formatting commonly expected
     if now.endswith("+00:00"):
         now = now[:-6] + "Z"

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 
-class InventoryStatus(str, Enum):
+class InventoryStatus(str, Enum):  # noqa: UP042
     AVAILABLE = "AVAILABLE"
     HELD = "HELD"
     SOLD = "SOLD"
@@ -46,7 +46,7 @@ def can_hold(current_status: InventoryStatus) -> TransitionResult:
     return TransitionResult(allowed=False, reason="SEAT_ALREADY_SOLD")
 
 
-def can_release(current_status: InventoryStatus, held_by_user_id, requesting_user_id) -> TransitionResult:
+def can_release(current_status: InventoryStatus, held_by_user_id, requesting_user_id) -> TransitionResult:  # noqa: E501
     """A hold can only be released by the user who holds it, and only from HELD."""
     if current_status != InventoryStatus.HELD:
         return TransitionResult(allowed=False, reason="SEAT_NOT_HELD")
@@ -55,7 +55,7 @@ def can_release(current_status: InventoryStatus, held_by_user_id, requesting_use
     return TransitionResult(allowed=True)
 
 
-def can_purchase(current_status: InventoryStatus, held_by_user_id, requesting_user_id) -> TransitionResult:
+def can_purchase(current_status: InventoryStatus, held_by_user_id, requesting_user_id) -> TransitionResult:  # noqa: E501
     """A HELD seat can only be purchased by the user who holds it.
 
     Week 2 does not allow buying an AVAILABLE seat directly without a

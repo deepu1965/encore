@@ -1,4 +1,5 @@
-from encore_gateway.base62 import encode_base62, decode_base62
+from encore_gateway.base62 import decode_base62, encode_base62
+
 
 def test_base62_encode_decode():
     assert encode_base62(0) == "0"

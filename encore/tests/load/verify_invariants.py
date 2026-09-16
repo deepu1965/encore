@@ -1,9 +1,9 @@
-import uuid
 import logging
 from collections import Counter
-from sqlalchemy import create_engine, select
+
 from encore_gateway.config import settings
-from encore_gateway.models import Order, Ticket, Inventory, InventoryStatus, OrderStatus
+from encore_gateway.models import Inventory, InventoryStatus, Order, OrderStatus, Ticket
+from sqlalchemy import create_engine, select
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

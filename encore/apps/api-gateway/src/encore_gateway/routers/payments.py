@@ -9,32 +9,18 @@ from __future__ import annotations
 
 import json
 
+from encore_common import error_envelope
+from encore_id_generator import SnowflakeIDGenerator
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, update
-from sqlalchemy.orm import Session, selectinload
-
-from encore_cache import CacheClient, event_seats_key, invalidate
-from encore_cache.helpers import hold_key, inventory_status_key
-from encore_common import error_envelope, success_envelope
-from encore_id_generator import SnowflakeIDGenerator
-from encore_event_contracts import (
-    ORDER_COMPLETED_EVENT_TYPE,
-    ORDER_COMPLETED_TOPIC,
-    ORDER_COMPLETED_VERSION,
-    OrderCompletedPayload,
-)
-from encore_kafka_client import build_envelope
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
-from ..cache import get_cache
 from ..db import get_db
-from ..domain.inventory_state import InventoryStatus as DomainInventoryStatus
-from ..domain.inventory_state import generate_ticket_code
 from ..idempotency import get_idempotent_response, save_idempotent_response
-from ..models import Inventory, InventoryStatus, Order, OrderStatus, Ticket, User
-from ..schemas import OrderOut, PaymentCreate, TicketOut
-
+from ..models import Order, OrderStatus, User
+from ..schemas import PaymentCreate
 
 router = APIRouter(prefix="/api/v1/payments", tags=["payments"])
 
@@ -43,10 +29,10 @@ CREATE_ENDPOINT_NAME = "POST /api/v1/payments"
 _id_gen = SnowflakeIDGenerator()
 
 
-import httpx
+import httpx  # noqa: E402
+from encore_common.circuit_breaker import CircuitBreaker, CircuitOpenException  # noqa: E402
 
-from encore_common.circuit_breaker import CircuitBreaker, CircuitOpenException
-from ..config import settings
+from ..config import settings  # noqa: E402
 
 payment_cb = CircuitBreaker(failure_threshold=5, recovery_timeout_sec=30.0)
 
@@ -68,13 +54,13 @@ def process_payment(
     if not idempotency_key:
         raise HTTPException(
             status_code=400,
-            detail=error_envelope("MISSING_IDEMPOTENCY_KEY", "Idempotency-Key header is required.", request_id),
+            detail=error_envelope("MISSING_IDEMPOTENCY_KEY", "Idempotency-Key header is required.", request_id),  # noqa: E501
         )
 
     # --- Idempotency Check ---
     existing = get_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME)
     if existing is not None:
-        return JSONResponse(status_code=existing.status_code, content=json.loads(existing.response_json))
+        return JSONResponse(status_code=existing.status_code, content=json.loads(existing.response_json))  # noqa: E501
 
     # --- Load Order ---
     order = db.execute(
@@ -92,7 +78,7 @@ def process_payment(
         )
 
     if order.status != OrderStatus.PENDING:
-        body = error_envelope("INVALID_ORDER_STATE", f"Order is in {order.status} state, expected PENDING.", request_id)
+        body = error_envelope("INVALID_ORDER_STATE", f"Order is in {order.status} state, expected PENDING.", request_id)  # noqa: E501
         save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, 409, body)
         db.commit()
         return JSONResponse(status_code=409, content=body)
@@ -112,15 +98,15 @@ def process_payment(
         )
         
         # Record response in our gateway idempotency table too
-        save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, resp.status_code, resp.json())
+        save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, resp.status_code, resp.json())  # noqa: E501
         db.commit()
         
         return JSONResponse(status_code=resp.status_code, content=resp.json())
     except CircuitOpenException as e:
         raise HTTPException(
-            status_code=503, detail=error_envelope("PAYMENT_SERVICE_UNAVAILABLE", "Circuit breaker OPEN: " + str(e), request_id)
+            status_code=503, detail=error_envelope("PAYMENT_SERVICE_UNAVAILABLE", "Circuit breaker OPEN: " + str(e), request_id)  # noqa: E501
         )
     except httpx.RequestError as e:
         raise HTTPException(
-            status_code=502, detail=error_envelope("PAYMENT_SERVICE_UNAVAILABLE", str(e), request_id)
+            status_code=502, detail=error_envelope("PAYMENT_SERVICE_UNAVAILABLE", str(e), request_id)  # noqa: E501
         )

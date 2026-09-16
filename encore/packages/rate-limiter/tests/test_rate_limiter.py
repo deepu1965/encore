@@ -20,13 +20,12 @@ Test strategy:
 
 from __future__ import annotations
 
-import pytest
 import fakeredis
-
+import pytest
 from encore_cache.client import NullCacheClient, RedisCacheClient
-from encore_rate_limiter import RateLimitConfig, RateLimitExceeded, RateLimiter, RateLimitResult
-from encore_rate_limiter.limiter import _apply_token_bucket
 
+from encore_rate_limiter import RateLimitConfig, RateLimiter, RateLimitExceeded
+from encore_rate_limiter.limiter import _apply_token_bucket
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -36,7 +35,7 @@ from encore_rate_limiter.limiter import _apply_token_bucket
 def make_redis_limiter(capacity: int, rate: float) -> RateLimiter:
     """Create a RateLimiter backed by an in-process fakeredis server."""
     cache = RedisCacheClient.__new__(RedisCacheClient)
-    cache._redis = fakeredis.FakeRedis(decode_responses=True)
+    cache._redis = fakeredis.FakeRedis(version=7, decode_responses=True)
     config = RateLimitConfig(capacity=capacity, rate_per_second=rate)
     return RateLimiter(cache=cache, config=config)
 

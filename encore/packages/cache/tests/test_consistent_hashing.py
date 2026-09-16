@@ -14,10 +14,8 @@ These tests have no external dependencies (no Redis, no fakeredis). They
 run anywhere Python 3.11+ is available, including the sandboxed CI env.
 """
 
-import pytest
 
 from encore_cache.consistent_hashing import ConsistentHashRing
-
 
 # ---------------------------------------------------------------------------
 # Basic correctness

@@ -11,7 +11,7 @@ Atomicity: Redis Lua script (see lua.py).
 Fallback:  Fail-open when Redis is unavailable (NullCacheClient path).
 """
 
-from .limiter import RateLimitConfig, RateLimitExceeded, RateLimitResult, RateLimiter
+from .limiter import RateLimitConfig, RateLimiter, RateLimitExceeded, RateLimitResult
 
 __all__ = [
     "RateLimitConfig",

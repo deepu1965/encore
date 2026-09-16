@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 
 from encore_kafka_client import KafkaEventProducer
+from fastapi import FastAPI, Request
 
 from .config import settings
 from .routers import charge
+
 
 class AppState:
     kafka_producer: KafkaEventProducer | None = None
@@ -34,6 +34,9 @@ async def lifespan(app: FastAPI):
     if app.state.kafka_producer:
         app.state.kafka_producer.stop()
         app.state.kafka_producer = None
+
+    from .db import engine
+    engine.dispose()
 
 app = FastAPI(title="Encore Payment Service", version="0.1.0", lifespan=lifespan)
 

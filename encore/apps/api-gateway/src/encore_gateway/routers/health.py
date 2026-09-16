@@ -5,15 +5,15 @@ service can actually do its job' aren't conflated.
 
 from __future__ import annotations
 
+from encore_cache import CacheClient
 from encore_common import health_check
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from ..db import get_db
 from ..cache import get_cache
-from encore_cache import CacheClient
-from fastapi.responses import JSONResponse
+from ..db import get_db
 
 router = APIRouter(tags=["health"])
 

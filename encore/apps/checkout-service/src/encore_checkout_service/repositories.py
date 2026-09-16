@@ -1,15 +1,24 @@
 import uuid
-from typing import Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import select
 
-from .models import Order, Inventory, Ticket, AuditEvent, AuditEventType, OrderStatus, InventoryStatus
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from .models import (
+    AuditEvent,
+    AuditEventType,
+    Inventory,
+    InventoryStatus,
+    Order,
+    OrderStatus,
+    Ticket,
+)
+
 
 class OrderRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def get_by_idempotency_key(self, idempotency_key: str) -> Optional[Order]:
+    def get_by_idempotency_key(self, idempotency_key: str) -> Order | None:
         return self.session.scalar(
             select(Order).where(Order.idempotency_key == idempotency_key)
         )
@@ -24,10 +33,10 @@ class InventoryRepository:
     def __init__(self, session: Session):
         self.session = session
         
-    def get_by_id(self, inventory_id: uuid.UUID) -> Optional[Inventory]:
+    def get_by_id(self, inventory_id: uuid.UUID) -> Inventory | None:
         return self.session.get(Inventory, inventory_id)
 
-    def get_by_event_and_seat(self, event_id: uuid.UUID, seat_id: uuid.UUID) -> Optional[Inventory]:
+    def get_by_event_and_seat(self, event_id: uuid.UUID, seat_id: uuid.UUID) -> Inventory | None:
         return self.session.scalar(
             select(Inventory).where(
                 Inventory.event_id == event_id,
@@ -48,7 +57,7 @@ class TicketRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def create_ticket(self, order_id: uuid.UUID, inventory_id: uuid.UUID, ticket_code: str) -> Ticket:
+    def create_ticket(self, order_id: uuid.UUID, inventory_id: uuid.UUID, ticket_code: str) -> Ticket:  # noqa: E501
         ticket = Ticket(
             order_id=order_id,
             inventory_id=inventory_id,

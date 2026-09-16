@@ -53,7 +53,7 @@ def test_can_purchase_own_held_seat():
 
 
 def test_cannot_purchase_available_seat_without_a_hold_first():
-    result = can_purchase(InventoryStatus.AVAILABLE, held_by_user_id=None, requesting_user_id=USER_A)
+    result = can_purchase(InventoryStatus.AVAILABLE, held_by_user_id=None, requesting_user_id=USER_A)  # noqa: E501
     assert result.allowed is False
     assert result.reason == "SEAT_NOT_HELD"
 

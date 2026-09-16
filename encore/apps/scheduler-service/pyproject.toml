@@ -1,0 +1,28 @@
+[project]
+name = "encore-scheduler-service"
+version = "0.1.0"
+description = "Microservice for managing distributed jobs and recurring tasks."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "psycopg2-binary>=2.9",
+    "sqlalchemy>=2.0",
+    "kafka-python-ng>=2.2",
+    "encore-common"
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6", "httpx>=0.27"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

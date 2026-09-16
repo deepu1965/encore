@@ -30,8 +30,22 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, Index, func, Boolean as sa_Boolean, text as sa_text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, TSVECTOR
+from geoalchemy2 import Geometry
+from sqlalchemy import Boolean as sa_Boolean
+from sqlalchemy import (
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy import text as sa_text
+from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -41,40 +55,57 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
     return mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
 
-class AuditEventType(str, enum.Enum):
+class AuditEventType(str, enum.Enum):  # noqa: UP042
     ISSUED = "ISSUED"
     TRANSFERRED = "TRANSFERRED"
     REVOKED = "REVOKED"
 
 
-class UserRole(str, enum.Enum):
+class UserRole(str, enum.Enum):  # noqa: UP042
     BUYER = "BUYER"
     ORGANIZER = "ORGANIZER"
     ADMIN = "ADMIN"
 
 
-class EventStatus(str, enum.Enum):
+class EventStatus(str, enum.Enum):  # noqa: UP042
     SCHEDULED = "SCHEDULED"
     ON_SALE = "ON_SALE"
     SOLD_OUT = "SOLD_OUT"
     CANCELLED = "CANCELLED"
 
 
-class InventoryStatus(str, enum.Enum):
+class InventoryStatus(str, enum.Enum):  # noqa: UP042
     AVAILABLE = "AVAILABLE"
     HELD = "HELD"
     SOLD = "SOLD"
 
 
-class OrderStatus(str, enum.Enum):
+class OrderStatus(str, enum.Enum):  # noqa: UP042
     PENDING = "PENDING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     EXPIRED = "EXPIRED"
+    CANCELLED = "CANCELLED"
 
 
-class TicketStatus(str, enum.Enum):
+class TicketStatus(str, enum.Enum):  # noqa: UP042
     ISSUED = "ISSUED"
+    USED = "USED"
+
+class MediaStatus(str, enum.Enum):  # noqa: UP042
+    UPLOADING = "UPLOADING"
+    PROCESSING = "PROCESSING"
+    READY = "READY"
+    FAILED = "FAILED"
+
+class MediaVisibility(str, enum.Enum):  # noqa: UP042
+    PUBLIC = "PUBLIC"
+    ORGANIZER_ONLY = "ORGANIZER_ONLY"
+
+class MediaType(str, enum.Enum):  # noqa: UP042
+    IMAGE = "IMAGE"
+    VIDEO = "VIDEO"
+    DOCUMENT = "DOCUMENT"
 
 
 class User(Base):
@@ -86,22 +117,22 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="user_role"), nullable=False, default=UserRole.BUYER
     )
-    is_mega_organizer: Mapped[bool] = mapped_column(sa_Boolean, nullable=False, server_default=sa_text('false'))
+    is_mega_organizer: Mapped[bool] = mapped_column(sa_Boolean, nullable=False, server_default=sa_text('false'))  # noqa: E501
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 class UserFollow(Base):
     __tablename__ = "user_follows"
 
-    follower_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
-    organizer_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    follower_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)  # noqa: E501
+    organizer_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)  # noqa: E501
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    event_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("events.id"), nullable=False, index=True)
-    user_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    event_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("events.id"), nullable=False, index=True)  # noqa: E501
+    user_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # noqa: E501
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -109,8 +140,25 @@ class ShortUrl(Base):
     __tablename__ = "short_urls"
 
     id: Mapped[str] = mapped_column(String(10), primary_key=True)
-    event_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("events.id"), nullable=False, index=True)
+    target_url: Mapped[str] = mapped_column(Text, nullable=False)
+    event_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("events.id"), nullable=False, index=True)  # noqa: E501
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class MediaMetadata(Base):
+    __tablename__ = "media_metadata"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    owner_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)  # noqa: E501
+    event_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("events.id"), nullable=True, index=True)  # noqa: E501
+    filename: Mapped[str] = mapped_column(String, nullable=False)
+    s3_bucket: Mapped[str] = mapped_column(String, nullable=False)
+    s3_key: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    status: Mapped[MediaStatus] = mapped_column(Enum(MediaStatus, name="media_status"), nullable=False, default=MediaStatus.UPLOADING)  # noqa: E501
+    visibility: Mapped[MediaVisibility] = mapped_column(Enum(MediaVisibility, name="media_visibility"), nullable=False, default=MediaVisibility.PUBLIC)  # noqa: E501
+    media_type: Mapped[MediaType] = mapped_column(Enum(MediaType, name="media_type"), nullable=False)  # noqa: E501
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())  # noqa: E501
 
 class Venue(Base):
     __tablename__ = "venues"
@@ -119,10 +167,11 @@ class Venue(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     city: Mapped[str] = mapped_column(String(255), nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC")
+    location: Mapped[Any] = mapped_column(Geometry("POINT", srid=4326), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    seats: Mapped[list["Seat"]] = relationship(back_populates="venue")
-    events: Mapped[list["Event"]] = relationship(back_populates="venue")
+    seats: Mapped[list[Seat]] = relationship(back_populates="venue")
+    events: Mapped[list[Event]] = relationship(back_populates="venue")
 
 
 class Event(Base):
@@ -141,8 +190,8 @@ class Event(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    venue: Mapped["Venue"] = relationship(back_populates="events")
-    inventory_rows: Mapped[list["Inventory"]] = relationship(back_populates="event")
+    venue: Mapped[Venue] = relationship(back_populates="events")
+    inventory_rows: Mapped[list[Inventory]] = relationship(back_populates="event")
 
     __table_args__ = (
         Index("ix_events_search_vector", "search_vector", postgresql_using="gin"),
@@ -152,7 +201,7 @@ class Event(Base):
 class Seat(Base):
     __tablename__ = "seats"
     __table_args__ = (
-        UniqueConstraint("venue_id", "section", "row_label", "seat_number", name="uq_seat_physical"),
+        UniqueConstraint("venue_id", "section", "row_label", "seat_number", name="uq_seat_physical"),  # noqa: E501
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -164,7 +213,7 @@ class Seat(Base):
     seat_number: Mapped[str] = mapped_column(String(16), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    venue: Mapped["Venue"] = relationship(back_populates="seats")
+    venue: Mapped[Venue] = relationship(back_populates="seats")
 
 
 class Inventory(Base):
@@ -197,8 +246,8 @@ class Inventory(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    event: Mapped["Event"] = relationship(back_populates="inventory_rows")
-    seat: Mapped["Seat"] = relationship()
+    event: Mapped[Event] = relationship(back_populates="inventory_rows")
+    seat: Mapped[Seat] = relationship()
 
 
 class Order(Base):
@@ -215,10 +264,10 @@ class Order(Base):
         Enum(OrderStatus, name="order_status"), nullable=False, default=OrderStatus.PENDING
     )
     total_cents: Mapped[int] = mapped_column(Integer, nullable=False)
-    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)  # noqa: E501
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    tickets: Mapped[list["Ticket"]] = relationship(back_populates="order")
+    tickets: Mapped[list[Ticket]] = relationship(back_populates="order")
 
 
 class Ticket(Base):
@@ -240,7 +289,7 @@ class Ticket(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    order: Mapped["Order"] = relationship(back_populates="tickets")
+    order: Mapped[Order] = relationship(back_populates="tickets")
 
 
 class IdempotencyRecord(Base):
@@ -273,7 +322,7 @@ class TicketOwnershipHistory(Base):
     new_user_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
     )
-    trade_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True, index=True)
+    trade_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True, index=True)  # noqa: E501
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -286,6 +335,45 @@ class AuditEvent(Base):
         Enum(AuditEventType, name="audit_event_type"), nullable=False
     )
     user_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
-    previous_owner_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    previous_owner_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)  # noqa: E501
     new_owner_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AdClickAggregation(Base):
+    __tablename__ = "ad_click_aggregations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ad_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    window_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)  # noqa: E501
+    click_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("ad_id", "window_timestamp", name="uq_ad_window"),
+    )
+
+class Job(Base):
+    __tablename__ = "jobs"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    job_type: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    payload: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String(64), nullable=False, default="pending", index=True)
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)  # noqa: E501
+    recurring_interval: Mapped[int | None] = mapped_column(Integer, nullable=True) # in seconds
+    retries: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())  # noqa: E501
+
+class Deployment(Base):
+    __tablename__ = "deployments"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    service_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    version: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(64), nullable=False, default="PENDING")
+    strategy: Mapped[str] = mapped_column(String(64), nullable=False, default="rolling")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())  # noqa: E501
+

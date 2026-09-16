@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from encore_event_contracts import (
     SEAT_HOLD_EXPIRED_EVENT_TYPE,
@@ -165,7 +165,7 @@ class HoldExpiryWorker:
                             )
 
                     # 3. Emit Kafka events
-                    now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+                    now = datetime.now(UTC).isoformat(timespec="milliseconds")
                     if now.endswith("+00:00"):
                         now = now[:-6] + "Z"
 

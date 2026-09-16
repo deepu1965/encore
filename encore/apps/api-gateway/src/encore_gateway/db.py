@@ -9,12 +9,12 @@ speculatively now.
 
 from __future__ import annotations
 
+import hashlib
+import uuid
 from collections.abc import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-import uuid
-import hashlib
 
 from .config import settings
 
@@ -31,7 +31,7 @@ class ShardManager:
         for url in shard_urls:
             engine = create_engine(url, pool_pre_ping=True, future=True)
             self.engines.append(engine)
-            self.session_factories.append(sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True))
+            self.session_factories.append(sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True))  # noqa: E501
 
     def get_shard_index(self, event_id: uuid.UUID | str) -> int:
         if not self.engines:

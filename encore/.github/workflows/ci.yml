@@ -29,9 +29,19 @@ jobs:
           - packages/hold-expiry
           - apps/api-gateway
           - apps/waiting-room
-          # Add each new Python package/service directory here as it's
-          # built, e.g.:
-          # - packages/observability
+          - packages/auth
+          - packages/feed-worker
+          - packages/notification-worker
+          - packages/event-crawler
+          - apps/payment-service
+          - apps/checkout-service
+          - apps/resale-engine
+          - apps/wallet-service
+          - apps/media-worker
+          - apps/location-service
+          - apps/scheduler-service
+          - apps/deployment-service
+          - apps/analytics-worker
     steps:
       - uses: actions/checkout@v4
 

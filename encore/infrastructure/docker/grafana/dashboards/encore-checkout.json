@@ -1,0 +1,40 @@
+{
+  "title": "Encore Checkout",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP P50/P95/P99 latency",
+      "targets": [
+        { "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job=\"api-gateway\"}[5m]))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Request rate by endpoint",
+      "targets": [
+        { "expr": "rate(http_requests_total{job=\"api-gateway\"}[1m])" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error rate",
+      "targets": [
+        { "expr": "rate(http_requests_total{status=~\"5..\"}[1m]) / rate(http_requests_total[1m])" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Inventory holds total",
+      "targets": [
+        { "expr": "inventory_holds_total" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Payment failures",
+      "targets": [
+        { "expr": "payment_failures_total" }
+      ]
+    }
+  ]
+}

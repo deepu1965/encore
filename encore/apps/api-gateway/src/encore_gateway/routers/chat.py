@@ -1,19 +1,16 @@
-import asyncio
 import json
 import logging
 import uuid
-from typing import Any, Dict, List
-from datetime import datetime
 
 import redis.asyncio as aioredis
+from encore_cache import CacheClient
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..cache import get_cache
 from ..db import get_db
 from ..models import ChatMessage, User
-from ..cache import get_cache
-from encore_cache import CacheClient
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +20,7 @@ router = APIRouter(tags=["Chat"])
 class ConnectionManager:
     def __init__(self):
         # event_id -> list of websockets
-        self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.active_connections: dict[str, list[WebSocket]] = {}
         
     def connect(self, event_id: str, websocket: WebSocket):
         if event_id not in self.active_connections:
@@ -72,14 +69,9 @@ async def start_redis_pubsub(redis_url: str):
         logger.error(f"Redis Pub/Sub error: {e}")
 
 def get_redis_url(cache: CacheClient = Depends(get_cache)) -> str:
-    # Hack to extract connection info, normally we'd pass this via config
-    if hasattr(cache, "_redis"):
-        kwargs = cache._redis.connection_pool.connection_kwargs
-        host = kwargs.get("host", "localhost")
-        port = kwargs.get("port", 6379)
-        db = kwargs.get("db", 0)
-        return f"redis://{host}:{port}/{db}"
-    return "redis://localhost:6379/0"
+    from ..config import settings
+    # We can construct the redis url from settings
+    return f"redis://{settings.redis_host}:{settings.redis_port}/0"
 
 def moderate_message(content: str) -> bool:
     """Basic moderation hook. Returns False if message is blocked."""
@@ -100,15 +92,13 @@ async def websocket_endpoint(
 ):
     await websocket.accept()
     
-    # 1. Authenticate user (Mock implementation for V1)
-    # Ideally, we would decode the JWT and get the user ID. 
-    # For this implementation, we assume token is the user_id string for simplicity,
-    # OR we just query the DB for the user. Let's just mock user parsing.
-    user_id_str = token
+    # 1. Authenticate user
     try:
-        user_id = uuid.UUID(user_id_str)
-    except ValueError:
-        await websocket.close(code=1008, reason="Invalid token (expected valid UUID for V1)")
+        from encore_auth.jwt import decode_token
+        claims = decode_token(token)
+        user_id = uuid.UUID(claims["sub"])
+    except Exception:
+        await websocket.close(code=1008, reason="Invalid token")
         return
         
     try:
@@ -153,7 +143,7 @@ async def websocket_endpoint(
                 data = await websocket.receive_text()
                 
                 if not moderate_message(data):
-                    await websocket.send_json({"type": "error", "message": "Message blocked by moderation."})
+                    await websocket.send_json({"type": "error", "message": "Message blocked by moderation."})  # noqa: E501
                     continue
                     
                 # Save to DB

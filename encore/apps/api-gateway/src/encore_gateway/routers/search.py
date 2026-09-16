@@ -3,10 +3,9 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from sqlalchemy.engine import Engine
-from pydantic import BaseModel
 
 from ..db import get_db_read
 from ..models import Event, EventStatus
@@ -25,6 +24,7 @@ class EventSearchResult(BaseModel):
 class SearchResponse(BaseModel):
     items: list[EventSearchResult]
     total: int
+    next_cursor: str | None = None
 
 
 @router.get("/search", response_model=SearchResponse)
@@ -34,10 +34,12 @@ def search_events(
     end_date: Annotated[datetime | None, Query(description="Filter by end date")] = None,
     status: Annotated[EventStatus | None, Query(description="Filter by status")] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    cursor: Annotated[str | None, Query(description="Pagination cursor")] = None,
     db: Session = Depends(get_db_read),
 ):
     """Full-text search for events using PostgreSQL tsvector."""
+    
+    from ..pagination import decode_cursor, encode_cursor
     
     query = db.query(Event)
     
@@ -56,7 +58,23 @@ def search_events(
         query = query.filter(Event.status == status)
 
     total = query.count()
-    events = query.order_by(Event.starts_at.asc()).offset(offset).limit(limit).all()
+    
+    if cursor:
+        cursor_starts_at, cursor_id = decode_cursor(cursor)
+        query = query.filter(
+            (Event.starts_at > cursor_starts_at) | 
+            ((Event.starts_at == cursor_starts_at) & (Event.id > cursor_id))
+        )
+        
+    events = query.order_by(Event.starts_at.asc(), Event.id.asc()).limit(limit + 1).all()
+    
+    has_more = len(events) > limit
+    events = events[:limit]
+    
+    next_cursor = None
+    if has_more and events:
+        last_event = events[-1]
+        next_cursor = encode_cursor(last_event.starts_at, last_event.id)
     
     # We could join with venue, but for V1 we just fetch it if needed.
     items = []
@@ -72,7 +90,7 @@ def search_events(
             )
         )
     
-    return SearchResponse(items=items, total=total)
+    return SearchResponse(items=items, total=total, next_cursor=next_cursor)
 
 
 @router.get("/autocomplete")

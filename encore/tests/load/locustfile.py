@@ -39,7 +39,7 @@ import uuid
 from itertools import cycle
 
 from locust import HttpUser, between, events, tag, task
-
+from locust.exception import StopUser
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -106,7 +106,7 @@ class HoldContentionUser(HttpUser):
                 resp.failure(f"Unexpected status {resp.status_code}: {resp.text[:200]}")
 
         # Stop after one attempt (this is a contention test, not a throughput test)
-        self.environment.runner.quit()
+        raise StopUser()
 
 
 # ─── Scenario B: Flash Sale Throughput ───────────────────────────────────────

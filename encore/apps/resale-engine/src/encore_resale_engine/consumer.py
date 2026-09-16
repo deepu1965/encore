@@ -1,8 +1,7 @@
 import json
 import logging
 import threading
-from kafka import KafkaConsumer
-from sqlalchemy.orm import sessionmaker
+
 from encore_event_contracts.events.resale import (
     RESALE_LISTING_CREATED_EVENT_TYPE,
     RESALE_LISTING_CREATED_TOPIC,
@@ -11,10 +10,13 @@ from encore_event_contracts.events.resale import (
     RESALE_TRADE_MATCHED_EVENT_TYPE,
     RESALE_TRADE_MATCHED_TOPIC,
     RESALE_TRADE_MATCHED_VERSION,
-    ResaleTradeMatchedPayload
+    ResaleTradeMatchedPayload,
 )
-from encore_kafka_client import KafkaEventProducer, build_envelope
 from encore_id_generator import SnowflakeIDGenerator
+from encore_kafka_client import KafkaEventProducer, build_envelope
+from kafka import KafkaConsumer
+from sqlalchemy.orm import sessionmaker
+
 from .matching import match_orders
 from .models import ResaleListing, ResaleOrder
 
@@ -42,13 +44,13 @@ class MatchingEngineConsumer(threading.Thread):
                 enable_auto_commit=False,
                 value_deserializer=lambda m: json.loads(m.decode("utf-8")),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.error(f"Failed to connect to Kafka in MatchingEngineConsumer: {exc}")
             return
 
         while not self._stop_event.is_set():
             messages = consumer.poll(timeout_ms=1000)
-            for tp, records in messages.items():
+            for tp, records in messages.items():  # noqa: PERF102
                 for record in records:
                     envelope = record.value
                     event_type = envelope.get("event_type")
@@ -89,7 +91,7 @@ class MatchingEngineConsumer(threading.Thread):
                             id_generator=self._id_gen
                         )
                         self.producer.publish(RESALE_TRADE_MATCHED_TOPIC, out_env)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 db.rollback()
                 logger.error(f"Error during matching for event {event_id_str}: {e}")
 

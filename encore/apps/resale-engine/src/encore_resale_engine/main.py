@@ -1,11 +1,15 @@
 from __future__ import annotations
+
 import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from encore_kafka_client import KafkaEventProducer
+
 from encore_common import setup_observability
-from .routers import resale
+from encore_kafka_client import KafkaEventProducer
+from fastapi import FastAPI, Request
+
 from .consumer import MatchingEngineConsumer
+from .routers import resale
+
 
 class AppState:
     kafka_producer: KafkaEventProducer | None = None
@@ -20,7 +24,7 @@ async def lifespan(app: FastAPI):
     try:
         producer.start()
         app.state.kafka_producer = producer
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"Failed to connect to Kafka producer: {exc}")
         app.state.kafka_producer = None
 

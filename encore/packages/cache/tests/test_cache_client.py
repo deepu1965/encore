@@ -15,7 +15,6 @@ import pytest
 
 from encore_cache.client import CacheClient, NullCacheClient, RedisCacheClient
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

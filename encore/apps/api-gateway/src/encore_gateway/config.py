@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     postgres_read_db: str = "encore"
     postgres_shard_urls: str = ""
 
+    # ------------------------------------------------------------------ Short URLs (Week 25)
+    short_url_base: str = "http://localhost:8000"
+
     # ------------------------------------------------------------------ Redis (Week 3)
     redis_host: str = "localhost"
     redis_port: int = 6379
@@ -99,7 +102,16 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "super_secret_week2_key"
     jwt_algorithm: str = "HS256"
 
+    # Service URLs
     payment_service_url: str = "http://localhost:8002"
+    location_service_url: str = "http://location-service:8004"
+    scheduler_service_url: str = "http://scheduler-service:8005"
+    deployment_service_url: str = "http://deployment-service:8006"
+    
+    # MinIO / Object Storage
+    minio_url: str = "http://minio:9000"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
 
 
 settings = Settings()

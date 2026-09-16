@@ -4,7 +4,7 @@ from encore_common import HealthStatus, health_check
 def test_health_ok_with_no_dependencies():
     result = health_check("api-gateway")
     assert result.status == HealthStatus.OK
-    assert result.checks == {}
+    assert result.dependencies == {}
 
 
 def test_health_ok_when_all_dependencies_healthy():
@@ -13,7 +13,7 @@ def test_health_ok_when_all_dependencies_healthy():
 
 
 def test_health_degraded_when_some_dependencies_down():
-    result = health_check("inventory-service", {"postgres": True, "redis": False})
+    result = health_check("inventory-service", non_critical_deps={"postgres": True, "redis": False})
     assert result.status == HealthStatus.DEGRADED
 
 

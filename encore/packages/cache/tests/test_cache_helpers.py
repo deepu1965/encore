@@ -16,6 +16,7 @@ dependency. Tests the cache_aside contract exhaustively:
 from __future__ import annotations
 
 import json
+
 import pytest
 
 from encore_cache.client import NullCacheClient
@@ -30,7 +31,6 @@ from encore_cache.helpers import (
     rate_limit_key,
     session_key,
 )
-
 
 # ---------------------------------------------------------------------------
 # Minimal in-memory cache client for testing

@@ -1,11 +1,11 @@
-import time
 import logging
+import time
 from enum import Enum
 from functools import wraps
 
 logger = logging.getLogger(__name__)
 
-class CircuitState(str, Enum):
+class CircuitState(str, Enum):  # noqa: UP042
     CLOSED = "CLOSED"       # Normal operation
     OPEN = "OPEN"           # Fast-fail
     HALF_OPEN = "HALF_OPEN" # Testing recovery
@@ -60,7 +60,7 @@ class CircuitBreaker:
                 self.record_success()
                 return result
             except Exception as e:
-                # In a real app we might only record failure for specific exception types (e.g. timeouts/5xx)
+                # In a real app we might only record failure for specific exception types (e.g. timeouts/5xx)  # noqa: E501
                 self.record_failure()
                 raise e
         return wrapper

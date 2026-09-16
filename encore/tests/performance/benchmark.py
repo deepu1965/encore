@@ -1,6 +1,8 @@
 import os
 import uuid
-from locust import HttpUser, task, between
+
+from locust import HttpUser, between, task
+
 
 class EncoreUser(HttpUser):
     wait_time = between(1, 2)
@@ -10,12 +12,31 @@ class EncoreUser(HttpUser):
     
     def on_start(self):
         """Set up auth headers to simulate a logged-in user."""
-        # A static test JWT or auth token if required.
-        # In this minimal benchmark, we'll assume either endpoints are public
-        # or we have a test token.
+        from encore_auth.jwt import create_token
+        import uuid
+        os.environ.setdefault("JWT_SECRET_KEY", "super_secret_week2_key")
+        user_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+        token = create_token(user_id, "CUSTOMER")
         self.client.headers.update({
-            "Authorization": "Bearer test-token-123"
+            "Authorization": f"Bearer {token}"
         })
+        
+        # Fetch actual event and seat IDs dynamically
+        self.dummy_event_id = None
+        self.dummy_seat_id = None
+        
+        resp = self.client.get("/api/v1/events?limit=1", name="setup")
+        if resp.status_code == 200:
+            events = resp.json().get("data", {}).get("items", [])
+            if events:
+                self.dummy_event_id = events[0]["id"]
+                
+                # Fetch a seat for this event
+                resp_seats = self.client.get(f"/api/v1/events/{self.dummy_event_id}/seats", name="setup")
+                if resp_seats.status_code == 200:
+                    seats = resp_seats.json().get("data", {}).get("items", [])
+                    if seats:
+                        self.dummy_seat_id = seats[0]["seat_id"]
 
     @task(3)
     def cache_scenario_get_event(self):
@@ -25,22 +46,29 @@ class EncoreUser(HttpUser):
     @task(2)
     def cache_scenario_get_inventory(self):
         """Fetch event seats/inventory status."""
-        # Using a dummy event UUID. In a real test, you'd fetch an ID from the events list.
-        dummy_event_id = "00000000-0000-0000-0000-000000000001"
-        self.client.get(f"/api/v1/events/{dummy_event_id}/seats", name="GET /events/{id}/seats")
+        if self.dummy_event_id:
+            self.client.get(f"/api/v1/events/{self.dummy_event_id}/seats", name="GET /events/{id}/seats")
 
     @task(1)
     def async_queue_scenario_create_order(self):
         """Scenario 3: Create an order to hit the Kafka queue."""
-        # Place an order for a dummy seat ID
-        dummy_seat_id = "00000000-0000-0000-0000-000000000002"
+        if not self.dummy_seat_id:
+            return
+            
         idempotency_key = str(uuid.uuid4())
         payload = {
-            "seat_ids": [dummy_seat_id]
+            "event_id": self.dummy_event_id,
+            "seat_id": self.dummy_seat_id
         }
-        self.client.post(
+        with self.client.post(
             "/api/v1/orders", 
             json=payload, 
             headers={"Idempotency-Key": idempotency_key},
-            name="POST /orders"
-        )
+            name="POST /orders",
+            catch_response=True
+        ) as resp:
+            # We expect 409 Conflict if the seat is not held by the user yet
+            if resp.status_code in [201, 400, 409]:
+                resp.success()
+            else:
+                resp.failure(f"Unexpected status {resp.status_code}: {resp.text[:100]}")

@@ -40,7 +40,8 @@ See `docs/architecture/service-boundaries.md` for what each service under
 ## Local development
 
 ```bash
-# Bring up infra + api-gateway (Postgres, Redis, Kafka, api-gateway)
+# Bring up infra + api-gateway (Postgres with PostGIS, Redis, Kafka, api-gateway)
+# Note: The postgres images use postgis/postgis to support spatial queries.
 docker compose -f infrastructure/docker/docker-compose.yml up -d
 # or: make up
 

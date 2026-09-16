@@ -2,9 +2,10 @@
 
 import logging
 import sys
+
 from kafka import KafkaAdminClient  # type: ignore[import-untyped]
 from kafka.admin import NewTopic  # type: ignore[import-untyped]
-from kafka.errors import TopicAlreadyExistsError, KafkaError  # type: ignore[import-untyped]
+from kafka.errors import KafkaError, TopicAlreadyExistsError  # type: ignore[import-untyped]
 
 from encore_gateway.config import settings
 
@@ -42,7 +43,7 @@ def main() -> None:
 
     new_topics = []
     for name, partitions, replicas in TOPICS:
-        new_topics.append(NewTopic(name=name, num_partitions=partitions, replication_factor=replicas))
+        new_topics.append(NewTopic(name=name, num_partitions=partitions, replication_factor=replicas))  # noqa: E501
 
     try:
         admin_client.create_topics(new_topics=new_topics, validate_only=False)

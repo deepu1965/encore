@@ -11,7 +11,7 @@ GET /api/v1/waiting-room/{event_id}/status
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from encore_common import error_envelope, success_envelope
 from encore_event_contracts import (
@@ -37,10 +37,10 @@ _id_gen = SnowflakeIDGenerator()
 def _get_user_id(authorization: str) -> str:
     """Extract user ID from fake Bearer token (same pattern as api-gateway)."""
     if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED", "message": "Missing Bearer token."})
+        raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED", "message": "Missing Bearer token."})  # noqa: E501
     user_id = authorization.removeprefix("Bearer ").strip()
     if not user_id:
-        raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED", "message": "Empty Bearer token."})
+        raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED", "message": "Empty Bearer token."})  # noqa: E501
     return user_id
 
 
@@ -93,7 +93,7 @@ def join_queue(
     if not is_admitted_before and not was_queued_before:
         producer: KafkaEventProducer | None = getattr(request.app.state, "kafka_producer", None)
         if producer is not None:
-            now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+            now = datetime.now(UTC).isoformat(timespec="milliseconds")
             if now.endswith("+00:00"):
                 now = now[:-6] + "Z"
             try:

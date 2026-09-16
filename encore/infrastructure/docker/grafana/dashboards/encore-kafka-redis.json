@@ -1,0 +1,33 @@
+{
+  "title": "Encore Kafka & Redis",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Kafka consumer lag per topic",
+      "targets": [
+        { "expr": "kafka_consumergroup_lag" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis hit rate",
+      "targets": [
+        { "expr": "redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Redis connected clients",
+      "targets": [
+        { "expr": "redis_connected_clients" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Resale matches total",
+      "targets": [
+        { "expr": "resale_matches_total" }
+      ]
+    }
+  ]
+}

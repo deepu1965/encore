@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
-import uuid
+import asyncio
 import logging
+import uuid
 from contextlib import asynccontextmanager
 
 from encore_common import error_envelope, setup_observability
@@ -14,13 +15,31 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from .cache import close_cache, init_cache, get_cache
+from .cache import close_cache, init_cache
 from .kafka_producer import close_producer, init_producer
 from .middleware.rate_limit import RateLimitMiddleware
 from .rate_limit import init_rate_limiters
-from .routers import events, health, holds, inventory, orders, payments, tickets, search, short_urls, feed, chat
-from .routers.chat import start_redis_pubsub, get_redis_url
-import asyncio
+from .routers import (
+    ads,
+    auth_router,
+    chat,
+    deployment,
+    events,
+    feed,
+    health,
+    holds,
+    inventory,
+    leaderboard,
+    location,
+    media,
+    orders,
+    payments,
+    scheduler,
+    search,
+    short_urls,
+    tickets,
+)
+from .routers.chat import get_redis_url, start_redis_pubsub
 
 logger = logging.getLogger(__name__)
 
@@ -33,38 +52,15 @@ async def lifespan(app: FastAPI):
       2. app.state.cache       — store the client so middleware / workers can reach it
       3. init_rate_limiters()  — create the two RateLimiter singletons
       4. init_producer()       — connect to Kafka
-      5. HoldExpiryWorker      — daemon thread for hold TTL cleanup (Week 7)
-                                  passes redis_client for Redis key cleanup (Week 8)
     """
-    from encore_hold_expiry import HoldExpiryWorker
-
-    from .config import settings
-    from .db import engine
 
     cache = init_cache()
     app.state.cache = cache
     init_rate_limiters(cache, app)
     init_producer(app)
 
-    producer = getattr(app.state, "kafka_producer", None)
+    producer = getattr(app.state, "kafka_producer", None)  # noqa: F841
 
-    # Extract raw Redis client for the expiry worker (Week 8 key cleanup)
-    _redis_for_worker = getattr(cache, "_redis", None)
-    
-    from encore_gateway.db import get_shard_engines
-    _shard_engines = list(get_shard_engines().values())
-
-    expiry_worker = HoldExpiryWorker(
-        primary_engine=engine,
-        shard_engines=_shard_engines,
-        producer=producer,
-        poll_interval_secs=settings.expiry_poll_interval_secs,
-        advisory_lock_id=settings.expiry_advisory_lock_id,
-        redis_client=_redis_for_worker,
-    )
-    expiry_worker.start()
-    app.state.expiry_worker = expiry_worker
-    
     # Start Redis PubSub Listener for Chat
     redis_url = get_redis_url(cache)
     pubsub_task = asyncio.create_task(start_redis_pubsub(redis_url))
@@ -74,7 +70,6 @@ async def lifespan(app: FastAPI):
     if not pubsub_task.done():
         pubsub_task.cancel()
     
-    expiry_worker.stop()
     close_producer(app)
     close_cache(cache)
     app.state.cache = None
@@ -137,7 +132,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:  # noqa: E501
     request_id = getattr(request.state, "request_id", "")
     body = error_envelope("VALIDATION_ERROR", str(exc.errors()), request_id)
     return JSONResponse(status_code=400, content=body)
@@ -154,3 +149,10 @@ app.include_router(search.router)
 app.include_router(short_urls.router)
 app.include_router(feed.router)
 app.include_router(chat.router)
+app.include_router(media.router)
+app.include_router(location.router)
+app.include_router(ads.router)
+app.include_router(leaderboard.router)
+app.include_router(scheduler.router)
+app.include_router(deployment.router)
+app.include_router(auth_router.router)

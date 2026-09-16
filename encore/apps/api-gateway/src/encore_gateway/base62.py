@@ -1,5 +1,11 @@
+import secrets
+
 BASE62_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 BASE = len(BASE62_ALPHABET)
+
+def generate_random_base62(length: int = 7) -> str:
+    """Generate a random Base62 string of a given length."""
+    return "".join(secrets.choice(BASE62_ALPHABET) for _ in range(length))
 
 def encode_base62(num: int) -> str:
     """Encode an integer into a Base62 string."""

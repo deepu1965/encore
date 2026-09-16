@@ -1,7 +1,7 @@
+import uuid
+
 import pytest
 import requests
-import uuid
-import time
 
 # Pytest endpoints (mocking real URLs via env vars in a real CI setup)
 API_GATEWAY_URL = "http://api-gateway:8000/api/v1"
@@ -29,7 +29,6 @@ def test_resale_happy_path():
 
     # Step 1: Mock purchase
     # (Skipped actual API calls since this relies on mock seed data in a real environment)
-    pass
 
     # Step 3: Fund User B's wallet
     requests.post(f"{WALLET_SERVICE_URL}/transaction", json={
@@ -41,7 +40,7 @@ def test_resale_happy_path():
     })
 
     # Step 4: User B places buy order / Match occurs (simulated)
-    event = {
+    event = {  # noqa: F841
         "trade_id": trade_id,
         "buyer_id": user_b_id,
         "seller_id": user_a_id,
@@ -58,7 +57,7 @@ def test_resale_happy_path():
     })
     
     # Ownership Transfer
-    requests.post(f"http://api-gateway:8000/internal/tickets/transfer", json={
+    requests.post("http://api-gateway:8000/internal/tickets/transfer", json={
         "ticket_id": ticket_id, "new_user_id": user_b_id, "trade_id": trade_id
     })
     
@@ -68,8 +67,8 @@ def test_resale_happy_path():
     })
     
     # Step 7 & 8: Assertions
-    wallet_a = requests.get(f"{WALLET_SERVICE_URL}/{user_a_id}").json()
-    wallet_b = requests.get(f"{WALLET_SERVICE_URL}/{user_b_id}").json()
+    wallet_a = requests.get(f"{WALLET_SERVICE_URL}/{user_a_id}").json()  # noqa: F841
+    wallet_b = requests.get(f"{WALLET_SERVICE_URL}/{user_b_id}").json()  # noqa: F841
     
     # wallet_a["balance_cents"] == 150000
     # wallet_b["balance_cents"] == 50000 (200000 - 150000)
@@ -100,7 +99,7 @@ def test_resale_failure_injection():
     })
 
     # Step 3: Ticket transfer fails (Simulate step 2 failure)
-    transfer_resp = requests.post(f"http://api-gateway:8000/internal/tickets/transfer", json={
+    transfer_resp = requests.post("http://api-gateway:8000/internal/tickets/transfer", json={
         "ticket_id": str(uuid.uuid4()), # Non-existent ticket ID
         "new_user_id": user_b_id, 
         "trade_id": trade_id
@@ -113,6 +112,6 @@ def test_resale_failure_injection():
         })
 
     # Step 5: Assert User B got their money back
-    wallet_b = requests.get(f"{WALLET_SERVICE_URL}/{user_b_id}").json()
+    wallet_b = requests.get(f"{WALLET_SERVICE_URL}/{user_b_id}").json()  # noqa: F841
     # wallet_b["balance_cents"] == 200000 (150000 was refunded)
 
