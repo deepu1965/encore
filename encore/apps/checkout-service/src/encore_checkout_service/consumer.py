@@ -152,7 +152,7 @@ class CheckoutOrchestrator(threading.Thread):
             inventory_repo.mark_sold(inventory_row)
             
             ticket_code = generate_ticket_code(str(order.id), sequence=0)
-            ticket = ticket_repo.create_ticket(order.id, inventory_row.id, ticket_code)
+            ticket = ticket_repo.create_ticket(order.id, inventory_row.id, ticket_code, user_id=order.user_id)
             
             # Since ticket requires an ID before we can use it in AuditEvent, we set it manually.
             ticket_id = self._id_gen.next_id().as_uuid()

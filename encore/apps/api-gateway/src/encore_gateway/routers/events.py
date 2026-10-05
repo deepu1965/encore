@@ -13,7 +13,7 @@ from encore_cache import CacheClient, cache_aside, event_seats_key
 from encore_cache.helpers import TTL_SEATS_SECONDS
 from encore_common import success_envelope
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..cache import get_cache
@@ -32,11 +32,18 @@ def list_events(
     request: Request,
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=100),
     cursor: str | None = Query(default=None),
+    city: str | None = Query(default=None),
+    status: str | None = Query(default=None),
     db: Session = Depends(get_db_read),
 ) -> dict:
-    stmt = select(Event, Venue).join(Venue, Event.venue_id == Venue.id).order_by(
-        Event.created_at.asc(), Event.id.asc()
-    )
+    stmt = select(Event, Venue).join(Venue, Event.venue_id == Venue.id)
+
+    if city:
+        stmt = stmt.where(func.lower(Venue.city) == city.lower())
+    if status:
+        stmt = stmt.where(Event.status == status)
+
+    stmt = stmt.order_by(Event.created_at.asc(), Event.id.asc())
 
     if cursor:
         cursor_created_at, cursor_id = decode_cursor(cursor)
@@ -58,6 +65,7 @@ def list_events(
             city=venue.city,
             starts_at=event.starts_at,
             status=event.status,
+            description=event.description,
         )
         for event, venue in rows
     ]
@@ -70,6 +78,37 @@ def list_events(
     body = EventListOut(items=items, next_cursor=next_cursor)
     request_id = getattr(request.state, "request_id", "")
     return success_envelope(body.model_dump(mode="json"), request_id=request_id)
+
+
+@router.get("/{event_id}")
+def get_event(
+    event_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db_read),
+) -> dict:
+    stmt = (
+        select(Event, Venue)
+        .join(Venue, Event.venue_id == Venue.id)
+        .where(Event.id == event_id)
+    )
+    row = db.execute(stmt).first()
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "EVENT_NOT_FOUND", "message": "Event not found"},
+        )
+    event, venue = row
+    item = EventOut(
+        id=event.id,
+        name=event.name,
+        venue_name=venue.name,
+        city=venue.city,
+        starts_at=event.starts_at,
+        status=event.status,
+        description=event.description,
+    )
+    request_id = getattr(request.state, "request_id", "")
+    return success_envelope(item.model_dump(mode="json"), request_id=request_id)
 
 
 @router.get("/{event_id}/seats")

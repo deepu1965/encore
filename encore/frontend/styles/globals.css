@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Encore design tokens — one token set, two theme modes.
+ * Values sourced from encore-v1.5/design/design-system.md §2.
+ * Colors are exposed as space-separated RGB channels so Tailwind's
+ * `<alpha-value>` support works (e.g. bg-primary/50).
+ */
+
+@layer base {
+  :root {
+    /* Typography */
+    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Menlo', monospace;
+
+    /* Radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 16px;
+
+    /* Elevation */
+    --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.08);
+    --shadow-md: 0 4px 12px -2px rgb(15 23 42 / 0.12);
+    --shadow-lg: 0 12px 32px -4px rgb(15 23 42 / 0.18);
+
+    /* Light theme (Customer / Organizer default) — RGB channels */
+    --color-primary: 79 70 229;
+    --color-primary-foreground: 255 255 255;
+    --color-secondary: 14 165 164;
+    --color-secondary-foreground: 255 255 255;
+    --color-background: 255 255 255;
+    --color-foreground: 15 23 42;
+    --color-surface: 248 250 252;
+    --color-surface-foreground: 15 23 42;
+    --color-border: 226 232 240;
+    --color-muted: 100 116 139;
+    --color-success: 22 163 74;
+    --color-warning: 217 119 6;
+    --color-error: 220 38 38;
+    --color-info: 37 99 235;
+  }
+
+  /* Dark theme (Ops default, and any persona that toggles it) */
+  .dark {
+    --color-primary: 129 140 248;
+    --color-primary-foreground: 11 15 20;
+    --color-secondary: 45 212 191;
+    --color-secondary-foreground: 11 15 20;
+    --color-background: 11 15 20;
+    --color-foreground: 226 232 240;
+    --color-surface: 21 27 35;
+    --color-surface-foreground: 226 232 240;
+    --color-border: 36 48 64;
+    --color-muted: 148 163 184;
+    --color-success: 74 222 128;
+    --color-warning: 251 191 36;
+    --color-error: 248 113 113;
+    --color-info: 96 165 250;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+    --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.6);
+    --shadow-lg: 0 12px 32px -4px rgb(0 0 0 / 0.7);
+  }
+
+  * {
+    border-color: rgb(var(--color-border));
+  }
+
+  body {
+    background-color: rgb(var(--color-background));
+    color: rgb(var(--color-foreground));
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}

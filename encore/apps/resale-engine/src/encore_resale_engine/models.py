@@ -22,7 +22,7 @@ class ResaleListing(Base):
     ticket_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, unique=True)
     seller_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
     ask_price_cents: Mapped[int] = mapped_column(Integer, nullable=False)
-    status: Mapped[ListingStatus] = mapped_column(Enum(ListingStatus, name="listing_status"), nullable=False, default=ListingStatus.ACTIVE)
+    status: Mapped[ListingStatus] = mapped_column(Enum(ListingStatus, name="resale_listing_status"), nullable=False, default=ListingStatus.ACTIVE)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 class ResaleOrder(Base):

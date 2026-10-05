@@ -8,6 +8,7 @@ It accepts an order ID and processes the payment using the provided idempotency 
 from __future__ import annotations
 
 import json
+import uuid
 
 from encore_common import error_envelope
 from encore_id_generator import SnowflakeIDGenerator
@@ -19,7 +20,17 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..db import get_db
 from ..idempotency import get_idempotent_response, save_idempotent_response
-from ..models import Order, OrderStatus, User
+from ..models import (
+    AuditEvent,
+    AuditEventType,
+    Inventory,
+    InventoryStatus,
+    Order,
+    OrderStatus,
+    Ticket,
+    TicketStatus,
+    User,
+)
 from ..schemas import PaymentCreate
 
 router = APIRouter(prefix="/api/v1/payments", tags=["payments"])
@@ -97,6 +108,72 @@ def process_payment(
             headers={"Idempotency-Key": idempotency_key, "X-Request-Id": request_id}
         )
         
+        # Complete order and issue ticket synchronously if payment succeeded
+        if resp.status_code == 201:
+            order.status = OrderStatus.COMPLETED
+            
+            existing_tix = db.execute(
+                select(Ticket).where(Ticket.order_id == order.id)
+            ).scalars().first()
+
+            if not existing_tix:
+                used_inv_subq = select(Ticket.inventory_id)
+                # Find held inventory for this user/event that does NOT already have a ticket
+                inventory_row = db.execute(
+                    select(Inventory).where(
+                        Inventory.event_id == order.event_id,
+                        Inventory.held_by_user_id == order.user_id,
+                        Inventory.status == InventoryStatus.HELD,
+                        ~Inventory.id.in_(used_inv_subq),
+                    )
+                ).scalars().first()
+                
+                if not inventory_row:
+                    # Fallback to any inventory for this user/event not in tickets
+                    inventory_row = db.execute(
+                        select(Inventory).where(
+                            Inventory.event_id == order.event_id,
+                            Inventory.held_by_user_id == order.user_id,
+                            ~Inventory.id.in_(used_inv_subq),
+                        )
+                    ).scalars().first()
+
+                if not inventory_row:
+                    # Fallback to any available inventory for this event not in tickets
+                    inventory_row = db.execute(
+                        select(Inventory).where(
+                            Inventory.event_id == order.event_id,
+                            ~Inventory.id.in_(used_inv_subq),
+                        )
+                    ).scalars().first()
+
+                if inventory_row:
+                    inventory_row.status = InventoryStatus.SOLD
+                    inventory_row.held_by_user_id = None
+                    inventory_row.held_at = None
+                    inventory_row.hold_expires_at = None
+                    inv_id = inventory_row.id
+
+                    tix_code = f"TIX-{uuid.uuid4().hex[:8].upper()}"
+                    tix = Ticket(
+                        id=_id_gen.next_id().as_uuid(),
+                        order_id=order.id,
+                        user_id=order.user_id,
+                        inventory_id=inv_id,
+                        ticket_code=tix_code,
+                        status=TicketStatus.ISSUED,
+                    )
+                    db.add(tix)
+                    
+                    audit_event = AuditEvent(
+                        id=_id_gen.next_id().as_uuid(),
+                        ticket_id=tix.id,
+                        event_type=AuditEventType.ISSUED,
+                        user_id=order.user_id,
+                        new_owner_id=order.user_id,
+                    )
+                    db.add(audit_event)
+
         # Record response in our gateway idempotency table too
         save_idempotent_response(db, idempotency_key, CREATE_ENDPOINT_NAME, resp.status_code, resp.json())  # noqa: E501
         db.commit()

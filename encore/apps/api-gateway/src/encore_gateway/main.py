@@ -33,13 +33,20 @@ from .routers import (
     location,
     media,
     orders,
+    organizer,
     payments,
+    realtime,
+    resale,
     scheduler,
     search,
     short_urls,
     tickets,
+    venues,
+    wallet,
 )
 from .routers.chat import get_redis_url, start_redis_pubsub
+from .routers.realtime import start_kafka_realtime_bridge, start_realtime_redis_listener
+from .config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +71,16 @@ async def lifespan(app: FastAPI):
     # Start Redis PubSub Listener for Chat
     redis_url = get_redis_url(cache)
     pubsub_task = asyncio.create_task(start_redis_pubsub(redis_url))
+    realtime_task = asyncio.create_task(start_realtime_redis_listener(redis_url))
+    kafka_bridge_task = asyncio.create_task(
+        start_kafka_realtime_bridge(settings.kafka_bootstrap_servers)
+    )
 
     yield
 
-    if not pubsub_task.done():
-        pubsub_task.cancel()
+    for task in (pubsub_task, realtime_task, kafka_bridge_task):
+        if not task.done():
+            task.cancel()
     
     close_producer(app)
     close_cache(cache)
@@ -156,3 +168,9 @@ app.include_router(leaderboard.router)
 app.include_router(scheduler.router)
 app.include_router(deployment.router)
 app.include_router(auth_router.router)
+app.include_router(auth_router.users_router)
+app.include_router(realtime.router)
+app.include_router(resale.router)
+app.include_router(venues.router)
+app.include_router(wallet.router)
+app.include_router(organizer.router)

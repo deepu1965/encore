@@ -369,6 +369,50 @@ services:
       pgbouncer:
         condition: service_healthy
 
+  resale-engine:
+    build:
+      context: ../../
+      dockerfile: apps/resale-engine/Dockerfile
+    container_name: encore-resale-engine
+    restart: unless-stopped
+    ports:
+      - "8007:8007"
+    environment:
+      - DATABASE_URL=postgresql://encore:encore_dev_only@pgbouncer:5432/encore
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - WALLET_SERVICE_URL=http://wallet-service:8008/api/v1/wallet
+      - API_GATEWAY_URL=http://api-gateway:8000/internal
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8007/api/v1/resale/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  wallet-service:
+    build:
+      context: ../../
+      dockerfile: apps/wallet-service/Dockerfile
+    container_name: encore-wallet-service
+    restart: unless-stopped
+    ports:
+      - "8008:8008"
+    environment:
+      - DATABASE_URL=postgresql://encore:encore_dev_only@pgbouncer:5432/encore
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8008/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   prometheus:
     image: prom/prometheus:v2.45.0
     container_name: encore-prometheus

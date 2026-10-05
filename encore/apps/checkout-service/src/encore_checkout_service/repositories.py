@@ -57,11 +57,12 @@ class TicketRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def create_ticket(self, order_id: uuid.UUID, inventory_id: uuid.UUID, ticket_code: str) -> Ticket:  # noqa: E501
+    def create_ticket(self, order_id: uuid.UUID, inventory_id: uuid.UUID, ticket_code: str, user_id: uuid.UUID | None = None) -> Ticket:  # noqa: E501
         ticket = Ticket(
             order_id=order_id,
             inventory_id=inventory_id,
-            ticket_code=ticket_code
+            ticket_code=ticket_code,
+            user_id=user_id,
         )
         self.session.add(ticket)
         return ticket

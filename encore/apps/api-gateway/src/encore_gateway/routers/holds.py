@@ -185,6 +185,17 @@ def create_hold(
             status_code=404, detail=error_envelope("SEAT_NOT_FOUND", "No such seat for this event.", request_id)  # noqa: E501
         )
 
+    now = datetime.now(UTC)
+    if (
+        inventory_row.status == InventoryStatus.HELD
+        and inventory_row.hold_expires_at is not None
+        and inventory_row.hold_expires_at < now
+    ):
+        inventory_row.status = InventoryStatus.AVAILABLE
+        inventory_row.held_by_user_id = None
+        inventory_row.held_at = None
+        inventory_row.hold_expires_at = None
+
     # --- Week 8: If domain check fails, release the Redis lock (compensating action) ---
     transition = can_hold(DomainInventoryStatus(inventory_row.status.value))
     if not transition.allowed:

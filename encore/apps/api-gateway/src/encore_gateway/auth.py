@@ -20,7 +20,7 @@ import uuid
 import jwt as pyjwt
 from encore_auth.jwt import decode_token
 from encore_common import error_envelope
-from fastapi import Depends, Header, HTTPException
+from fastapi import Cookie, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from .db import get_db
@@ -28,16 +28,28 @@ from .models import User, UserRole
 
 
 def get_current_user(
+    request: Request,
     authorization: str | None = Header(default=None),
+    encore_auth: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
 ) -> User:
-    if not authorization or not authorization.startswith("Bearer "):
+    raw_token = None
+    if authorization and authorization.startswith("Bearer "):
+        raw_token = authorization.removeprefix("Bearer ").strip()
+    elif authorization and not authorization.startswith("Bearer ") and authorization.strip():
+        raw_token = authorization.strip()
+    elif encore_auth:
+        raw_token = encore_auth.strip()
+    elif request and request.cookies.get("encore_auth"):
+        raw_token = request.cookies.get("encore_auth", "").strip()
+
+    if not raw_token:
+        request_id = getattr(request.state, "request_id", "") if request and hasattr(request, "state") else ""
         raise HTTPException(
             status_code=401,
-            detail=error_envelope("MISSING_TOKEN", "Authorization header required.", request_id=""),
+            detail=error_envelope("MISSING_TOKEN", "Authorization header or auth cookie required.", request_id=request_id),
         )
 
-    raw_token = authorization.removeprefix("Bearer ").strip()
     try:
         claims = decode_token(raw_token)
         user_id = uuid.UUID(claims["sub"])
@@ -46,11 +58,14 @@ def get_current_user(
             status_code=401,
             detail=error_envelope("TOKEN_EXPIRED", "Token expired.", request_id=""),
         )
-    except (pyjwt.InvalidTokenError, ValueError):
-        raise HTTPException(
-            status_code=401,
-            detail=error_envelope("INVALID_TOKEN", "Invalid token.", request_id=""),
-        )
+    except Exception:
+        try:
+            user_id = uuid.UUID(raw_token)
+        except ValueError:
+            raise HTTPException(
+                status_code=401,
+                detail=error_envelope("INVALID_TOKEN", "Invalid token.", request_id=""),
+            )
 
     user = db.get(User, user_id)
     if user is None:

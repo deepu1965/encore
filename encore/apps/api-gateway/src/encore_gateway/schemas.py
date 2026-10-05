@@ -22,6 +22,7 @@ class EventOut(BaseModel):
     city: str
     starts_at: datetime
     status: EventStatus
+    description: str | None = None
 
     model_config = {"from_attributes": True}
 

@@ -48,34 +48,46 @@ docker compose -f infrastructure/docker/docker-compose.yml up -d
 # Apply migrations, then seed demo data
 make install-api      # first time only — installs encore-common + api-gateway locally
 make migrate
-make seed             # prints a demo user id — use it as your Bearer token
+make seed             # seeds baseline events, seats, and demo users
 
-# Run the API locally (outside Docker, with reload)
-make run-api
+# Automated local runtime verification:
+./scripts/verify_local.sh
 
-# Try the vertical slice end to end:
+# Or try the vertical slice end to end manually:
+# 1. Obtain JWT Bearer Token:
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "11111111-1111-1111-1111-111111111111"}' | jq -r .access_token)
+
+# 2. Query Events & Seats:
 curl http://localhost:8000/api/v1/events
 curl http://localhost:8000/api/v1/events/<event_id>/seats
+
+# 3. Create Hold:
 curl -X POST http://localhost:8000/api/v1/holds \
-  -H "Authorization: Bearer <demo_user_id>" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Idempotency-Key: demo-hold-1" \
   -H "Content-Type: application/json" \
   -d '{"event_id": "<event_id>", "seat_id": "<seat_id>"}'
+
+# 4. Create Order:
 curl -X POST http://localhost:8000/api/v1/orders \
-  -H "Authorization: Bearer <demo_user_id>" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Idempotency-Key: demo-order-1" \
   -H "Content-Type: application/json" \
   -d '{"event_id": "<event_id>", "seat_id": "<seat_id>"}'
-curl http://localhost:8000/api/v1/orders/<order_id>
 
-# Run tests / lint for a given package
-make test-common && make lint-common
-make test-api && make lint-api
+# 5. Process Payment:
+curl -X POST http://localhost:8000/api/v1/payments \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: demo-pay-1" \
+  -H "Content-Type: application/json" \
+  -d '{"order_id": "<order_id>"}'
+
+# For full local setup and all service endpoints, see LOCAL_RUN_GUIDE.md
 ```
 
-Note on auth: `Authorization: Bearer <token>` currently expects the raw
-user UUID as the token — this is a deliberate, documented Week 2 shortcut,
-not real authentication. See `docs/decisions/0004-fake-bearer-token-week2-auth.md`.
+Note on auth: `Authorization: Bearer <token>` uses HS256 JWT tokens issued by `POST /api/v1/auth/token` (see `docs/decisions/0012-jwt-auth-week24.md`).
 
 Copy `.env.example` to `.env` and adjust before running anything that needs
 real credentials (there are none required for local dev with the default

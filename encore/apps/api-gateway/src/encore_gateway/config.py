@@ -107,6 +107,8 @@ class Settings(BaseSettings):
     location_service_url: str = "http://location-service:8004"
     scheduler_service_url: str = "http://scheduler-service:8005"
     deployment_service_url: str = "http://deployment-service:8006"
+    resale_service_url: str = "http://resale-engine:8007"
+    wallet_service_url: str = "http://wallet-service:8008"
     
     # MinIO / Object Storage
     minio_url: str = "http://minio:9000"

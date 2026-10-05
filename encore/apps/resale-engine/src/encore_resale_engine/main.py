@@ -6,8 +6,11 @@ from contextlib import asynccontextmanager
 from encore_common import setup_observability
 from encore_kafka_client import KafkaEventProducer
 from fastapi import FastAPI, Request
+from sqlalchemy import text
 
+from .config import settings
 from .consumer import MatchingEngineConsumer
+from .db import engine
 from .routers import resale
 
 
@@ -15,10 +18,16 @@ class AppState:
     kafka_producer: KafkaEventProducer | None = None
     matching_consumer: MatchingEngineConsumer | None = None
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Verify DB connectivity on startup
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+
+    # Connect to Kafka producer
     producer = KafkaEventProducer(
-        bootstrap_servers="localhost:9092",
+        bootstrap_servers=settings.kafka_bootstrap_servers,
         producer_name="resale-engine-producer",
     )
     try:
@@ -28,8 +37,12 @@ async def lifespan(app: FastAPI):
         print(f"Failed to connect to Kafka producer: {exc}")
         app.state.kafka_producer = None
 
-    # We would use a real DB engine here, mocking for now
-    consumer = MatchingEngineConsumer(engine=None, bootstrap_servers="localhost:9092", producer=app.state.kafka_producer)
+    # Start matching consumer thread with real DB engine
+    consumer = MatchingEngineConsumer(
+        engine=engine,
+        bootstrap_servers=settings.kafka_bootstrap_servers,
+        producer=app.state.kafka_producer,
+    )
     consumer.start()
     app.state.matching_consumer = consumer
 
@@ -42,10 +55,14 @@ async def lifespan(app: FastAPI):
         app.state.kafka_producer.stop()
         app.state.kafka_producer = None
 
-app = FastAPI(title="Encore Resale Engine", lifespan=lifespan)
+    engine.dispose()
+
+
+app = FastAPI(title="Encore Resale Engine", version="0.1.0", lifespan=lifespan)
 
 # Initialize metrics, structured logging, and OpenTelemetry
 setup_observability(app, "resale-engine")
+
 
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
@@ -55,5 +72,6 @@ async def request_id_middleware(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Request-Id"] = request_id
     return response
+
 
 app.include_router(resale.router)
